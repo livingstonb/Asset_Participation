@@ -5,6 +5,7 @@
 
 using RMatrix = Eigen::MatrixXd;
 using RVector = Eigen::VectorXd;
+using RArray1d = Eigen::ArrayXd;
 using RMatrixBlock = Eigen::Block<const RMatrix>;
 using RMatrixRef = Eigen::Ref<const RMatrix>;
 using RVectorRef = Eigen::Ref<const RVector>;

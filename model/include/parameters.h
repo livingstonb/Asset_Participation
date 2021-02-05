@@ -3,7 +3,24 @@
 
 class Parameters {
 	public:
-		int n_sf, n_se, n_re, n_y;
+		int nx = 50;
+		int n_sf = 50;
+		int n_se = 50;
+		int n_re = 5;
+		int np = 1;
+		int nyP = 5;
+		int nyT = 1;
+
+		// Coeff of relative risk aversion
+		double gam = 1.0;
+
+		// Liquidity preference coeff
+		double phi = 0.5;
+
+		double beta = 0.95;
+		double xmax = 200.0;
+		double sgridcurv = 0.2;
+
 };
 
 #endif

@@ -1,3 +1,5 @@
+#ifndef BELLMAN_HEADER
+#define BELLMAN_HEADER
 
 // Just pass a function pointer to C++?
 // Or do the whole thing in C++
@@ -46,3 +48,4 @@ class Bellman {
 // 	return u + ev;
 // }
 
+#endif
