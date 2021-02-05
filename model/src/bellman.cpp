@@ -9,15 +9,14 @@
 class BellmanImpl {
 	public:
 		BellmanImpl(const Parameters& p)
-			: V(boost::extents[p.nx][p.nyP][p.np]) {}
+			: V(boost::extents[p.nx][p.nyP][p.np]),
+				EV(boost::extents[p.n_sf][p.n_se][p.nyP]) {}
 
 		Income income;
 
 		Grids grids;
 
-		arr3d V;
-
-		RMatrix EV;
+		arr3d V, EV;
 };
 
 Bellman::Bellman()
@@ -31,7 +30,7 @@ void Bellman::terminal_value()
 	for (int ix=0; ix<p->nx; ++ix) {
 		for (int iyP=0; iyP<p->nyP; ++iyP) {
 			for (int ip=0; ip<p->np; ++ip) {
-				impl->V[ix][iy][ip] = pow(impl->grids.x[ix], 1.0 - p->gam);
+				impl->V[ix][iyP][ip] = pow(impl->grids.x[ix], 1.0 - p->gam);
 			}
 		}
 	}
@@ -52,8 +51,7 @@ void Bellman::update_EV()
 	nyP = p->nyP;
 	np = p->np;
 
-	RMatrix& evref = impl->EV;
-	evref = RMatrix::Zero(n_sf * n_se, ny);
+	arr3d& evref = impl->EV;
 
 	const Grids& grids = impl->grids;
 	const Income& income = impl->income;
@@ -86,20 +84,20 @@ void Bellman::update_EV()
 
 			// Take expectation over income
 			for (int iyP=0; iyP<nyP; ++iyP) {
-				evref(isf + n_sf * ise, iyP) = 0;
+				evref[isf][ise][iyP] = 0.0;
 				for (int iyP2=0; iyP2<nyP; ++iyP2) {
-					evref(isf + n_sf * ise, iyP)
-						+= income.yP_trans(iyP, iyP2) * vp[iyP2];
+					evref[isf][ise][iyP] += income.yP_trans(iyP, iyP2) * vp[iyP2];
 				}
+				evref[isf][ise][iyP] *= p->beta;
 			}
 		}
 	}
-	evref *= p->beta;
 }
 
 double Bellman::continuation_value(double sf, double se, int k) const
 {
 	// Interpolates EV
-	return linterp2(
-		impl->EV.col(k), impl->grids.sf, impl->grids.se, sf, se);
+	arr3d::view<2> values = impl->EV[ boost::indices[range()][range()][iyP] ];
+	return linterp2(impl->grids.sf, impl->grids.se, values,
+		p->n_sf, p->n_se, sf, se);
 }
