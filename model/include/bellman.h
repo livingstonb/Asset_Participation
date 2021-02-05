@@ -17,10 +17,8 @@ class Bellman {
 	private:
 		std::unique_ptr<BellmanImpl> impl;
 
-		std::unique_ptr<Parameters> p;
-
 	public:
-		Bellman();
+		Bellman(const Parameters& p);
 
 		void update_EV();
 

@@ -30,8 +30,8 @@ int main() {
 	// std::cout << linterp2(values.col(1), grid0, grid1, 1.5, 30) << '\n';
 
 	double* arr = new double[2];
-	arr[0] = 1.5;
-	arr[1] = -0.2;
+	arr[0] = -1;
+	arr[1] = 1;
 
 	bool success = test_opt(arr, 2);
 	std::cout << success << '\n';

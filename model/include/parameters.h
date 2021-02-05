@@ -10,6 +10,7 @@ class Parameters {
 		int np = 1;
 		int nyP = 5;
 		int nyT = 1;
+		int T = 10;
 
 		// Coeff of relative risk aversion
 		double gam = 1.0;
