@@ -79,17 +79,28 @@ void Bellman::compute_value_t()
 	const Grids& grids = impl->grids;
 	const arr3d& V = impl->V;
 
+	ObjArgs args;
+	args.gam = p.gam;
+	args.phi1 = p.phi1;
+	args.phi2 = p.phi2;
+	args.Rb = p.Rb;
+	args.beta = p.beta;
+
 	for (int ix=0; ix<p.nx; ++ix) {
+		args.x = grids.x[ix];
 		for (int iyP=0; iyP<p.nyP; ++iyP) {
+			auto idx = boost::indices[range()][range()][iyP];
+			arg->values = impl->EV[idx];
 			for (int ip=0; ip<p.np; ++ip) {
-				solve_decisions(ix, iyP, ip);
+				solve_decisions(this, ix, iyP, ip, args);
 			}
 		}
 	}
 	--(impl->t);
 }
 
-void solve_decisions(BellmanImpl& impl, int ix, int iyP, int ip)
+void solve_decisions(BellmanImpl* impl, int ix, int iyP, int ip,
+	ObjArgs& args)
 {
 	const Parameters& p = impl->p;
 	const Grids& grids = impl->grids;
@@ -196,14 +207,6 @@ void Bellman::update_EV()
 			}
 		}
 	}
-}
-
-double Bellman::continuation_value(double sf, double se, int k) const
-{
-	// Interpolates EV
-	arr3d::view<2> values = impl->EV[ boost::indices[range()][range()][iyP] ];
-	return linterp2(impl->grids.sf, impl->grids.se, values,
-		p->n_sf, p->n_se, sf, se);
 }
 
 namespace {

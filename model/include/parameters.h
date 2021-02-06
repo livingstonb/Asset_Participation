@@ -15,12 +15,15 @@ class Parameters {
 		// Coeff of relative risk aversion
 		double gam = 1.0;
 
-		// Liquidity preference coeff
-		double phi = 0.5;
+		// Liquidity preference coeffs
+		double phi1 = 0.2;
+		double phi2 = 0.5;
 
 		double beta = 0.95;
 		double xmax = 200.0;
 		double sgridcurv = 0.2;
+
+		double Rb = 1.005;
 
 };
 
