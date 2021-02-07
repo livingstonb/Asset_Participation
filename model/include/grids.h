@@ -1,7 +1,7 @@
 #ifndef GRIDS_HEADER
 #define GRIDS_HEADER
 
-#include <eigen_interface.h>
+#include<vector>
 
 class Grids {
 	public:
@@ -16,28 +16,26 @@ class Grids {
 
 		void create_pref_dist();
 
-		int n_sf, n_se, n_re, nyP, nyT;
+		int n_sf, n_se, n_re, nyP, nyT, np;
 
-		double xmax;
+		double xmax, curv;
 
-		RVector se, sf, Re, Re_dist, yP, yP_dist, y_dist;
+		std::vector<double> se, sf, Re, Re_dist, yP, yP_dist, y_dist;
 
-		RVector yT, yT_dist, y, lpref, lpref_dist;
-
-		RMatrix yP_trans;
+		std::vector<double> yT, yT_dist, y, lpref, lpref_dist, yP_trans;
 };
 
 template<typename P>
 Grids::Grids(const P& p)
 {
-	n_sf = p->n_sf;
-	n_se = p->n_se;
-	n_re = p->n_re;
-	curv = p->sgridcurv;
-	nyP = p->nyP;
-	nyT = p->nyT;
-	np = p->np;
-	xmax = p->xmax;
+	n_sf = p.n_sf;
+	n_se = p.n_se;
+	n_re = p.n_re;
+	curv = p.sgridcurv;
+	nyP = p.nyP;
+	nyT = p.nyT;
+	np = p.np;
+	xmax = p.xmax;
 
 	create_saving_grids();
 

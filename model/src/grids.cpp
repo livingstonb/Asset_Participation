@@ -1,8 +1,10 @@
 #include <grids.h>
+#include <cmath>
 
 namespace {
-	RVector linspace(int n);
-	RVector curved_grid(double a, double b, int n, double curv);
+	std::vector<double> linspace(int n);
+	std::vector<double> curved_grid(double a, double b,
+		int n, double curv);
 }
 
 void Grids::create_saving_grids()
@@ -13,63 +15,75 @@ void Grids::create_saving_grids()
 
 void Grids::create_returns_dist()
 {
-	Re = RVector(n_re);
-	Re << 1.0, 1.014;
+	// Re.resize(n_re);
+	Re = {1.0, 1.014};
 
-	Re_dist = RVector(n_re);
-	Re_dist << 0.5, 0.5;
+	// Re_dist.resize(n_re);
+	Re_dist = {0.5, 0.5};
 }
 
 void Grids::create_income_dist()
 {
-	yP = RVector(nyP);
-	yP << 0.2, 0.3;
+	// yP.resize(nyP);
+	yP = {0.2, 0.3};
 
-	yP_trans = RMatrix(nyP, nyP);
-	yP_trans << 0.7, 0.3,
-				0.3, 0.7;
+	// yP_trans.resize(nyP * nyP);
+	yP_trans = {0.7, 0.3, 0.3, 0.7};
 
-	yP_dist = RVector(nyP);
-	yP_dist << 0.5, 0.5;
+	// yP_dist = RVector(nyP);
+	yP_dist = {0.5, 0.5};
 
-	yT = RVector(nyT);
-	yT << 1.0;
+	// yT = RVector(nyT);
+	yT = {1.0};
 
-	yT_dist = RVector(nyT);
-	yT_dist << 1.0;
+	// yT_dist = RVector(nyT);
+	yT_dist = {1.0};
 
-	y_dist = yP_dist * yT_dist.transpose();
+	y_dist.reserve(nyP * nyT);
+	y.reserve(nyP * nyT);
+	double meany = 0;
+	for (int iyP=0; iyP<nyP; ++iyP) {
+		for (int iyT=0; iyT<nyT; ++iyT) {
+			y_dist.push_back(yP_dist[iyP] * yT_dist[iyT]);
+			y.push_back(yP[iyP] * yT[iyT]);
+			meany += yP[iyP] * yT[iyT] / (nyP * nyT);
+		}
+	}
 
-	y = yP * yT.transpose();
-	double meany = yP_dist.T * y * yT_dist;
-	y /= meany;
-	yT /= meany;
+	for (auto& yval : y)
+		yval /= meany;
+
+	for (auto& yTval : yT)
+		yTval /= meany;
 }
 
 void Grids::create_pref_dist()
 {
-	lpref = RVector(np);
-	lpref << 0.1;
+	// lpref.resize(np);
+	lpref = {0.1};
 
-	lpref_dist = RVector(np);
-	lpref_dist << 1.0;
+	// lpref_dist = RVector(np);
+	lpref_dist = {1.0};
 }
 
 namespace {
-	RVector linspace(int n)
+	std::vector<double> linspace(int n)
 	{
-		RVector vec_out(n);
+		std::vector<double> vec_out(n);
 
 		for (int i=0; i<n; ++i)
-			vec_out[i] = i / (n - 1);
+			vec_out[i] = double(i) / (n - 1);
 
 		return vec_out;
 	}
 
-	RVector curved_grid(double a, double b, int n, double curv)
+	std::vector<double> curved_grid(double a, double b, int n, double curv)
 	{
-		RVector vec_out = linspace(n);
-		vec_out = a + (b - a) * vec_out.array().pow(1.0 / curv);
+		std::vector<double> vec_out = linspace(n);
+
+		for (auto& x : vec_out)
+			x = a + (b - a) * pow(x, 1.0 / curv);
+
 		return vec_out;
 	}
 }

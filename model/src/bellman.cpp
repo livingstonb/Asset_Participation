@@ -1,10 +1,11 @@
 #include <bellman.h>
-#include <eigen_interface.h>
 #include <boost_includes.h>
 #include <interpolation.h>
 #include <parameters.h>
 #include <grids.h>
 #include <functions.h>
+
+using BellmanPtr = std::unique_ptr<BellmanImpl>;
 
 namespace {
 	struct ObjArgs {
@@ -12,9 +13,9 @@ namespace {
 
 		arr3d::view<2> evalues;
 
-		const RVector& sfgrid;
+		const std::vector<double>& sfgrid;
 
-		const RVector& segrid;
+		const std::vector<double>& segrid;
 
 		int n_sf, n_se;
 	};
@@ -25,13 +26,25 @@ namespace {
 class BellmanImpl {
 	public:
 		BellmanImpl(const Parameters& p_)
-			: p(p_), V(boost::extents[p_.nx][p_.nyP][p_.np]),
+			: p(p_), grids(grids_),
+				V(boost::extents[p_.nx][p_.nyP][p_.np]),
 				EV(boost::extents[p_.n_sf][p_.n_se][p_.nyP])
 		{
 			t = p->T;
 		}
 
+		void compute_terminal_value();
+
+		void update_EV();
+
+		void compute_value_t();
+
+		void solve_decisions(int ix, int iyP, int ip,
+			const ObjArgs& args);
+
 		const Parameters& p;
+
+		const Grids& grids;
 
 		arr3d V, EV;
 
@@ -42,27 +55,8 @@ class BellmanImpl {
 		int t;
 };
 
-Bellman::Bellman(const Parameters& p)
+void BellmanImpl::compute_terminal_value()
 {
-	impl.reset(new BellmanImpl(p));
-}
-
-void Bellman::solve()
-{
-	compute_terminal_value();
-
-	while (impl->t > 0) {
-		update_EV();
-		compute_value_t();
-	}
-}
-
-void Bellman::compute_terminal_value()
-{
-	const Parameters& p = impl->p;
-	const Grids& grids = impl->grids;
-	const arr3d& V = impl->V;
-
 	for (int ix=0; ix<p.nx; ++ix) {
 		for (int iyP=0; iyP<p.nyP; ++iyP) {
 			for (int ip=0; ip<p.np; ++ip) {
@@ -70,15 +64,72 @@ void Bellman::compute_terminal_value()
 			}
 		}
 	}
-	--(impl->t);
+	--t;
 }
 
-void Bellman::compute_value_t()
+void BellmanImpl::update_EV()
 {
-	const Parameters& p = impl->p;
-	const Grids& grids = impl->grids;
-	const arr3d& V = impl->V;
+	// Computes continuation value as a function of sf, se, y.
+	//
+	// sf : Amount invested in safe assets, after interest
+	// se : Amount invested in equity, before return
 
+	double sf, se, xp;
+	int n_sf, n_se, n_re, nyP, np;
+	n_sf = p.n_sf;
+	n_se = p.n_se;
+	n_re = p.n_re;
+	nyP = p.nyP;
+	np = p.np;
+
+	// boost::array<arr3d::index, 3> shape = {{ p.nx, ny, np }};
+
+	std::vector<arr3d::view<1>> vviews(p.nyP * p.np);
+	for (int iyP=0; iyP<p.nyP; ++iyP) {
+		for (int ip=0; ip<p.np; ++ip) {
+			vviews[iyP + p.nyP * ip] = V[ boost::indices[range()][iyP][ip] ];
+		}
+	}
+
+	double evval;
+	double xp;
+
+	// Compute V' by interpolation
+	double vp[n_y];
+	for (int isf=0; isf<n_sf; ++isf) {
+		sf = grids.sf[isf];
+		for (int ise=0; ise<n_se; ++ise) {
+			se = grids.se[ise];
+			for (int iyP=0; iy<nyP; ++iyP) {
+				EV[isf][ise][iyP] = val_EV(sf, se, iyP);
+			}
+		}
+	}
+}
+
+double BellmanImpl::val_EV(double sf, double se, int iyP,
+	const std::vector<arr3d::view<1>>& vviews) const
+{
+	double ev = 0.0;
+
+	for (int iyT=0; iyT<p.nyT; ++iyT) {
+		for (int ie=0; ie<p.n_re; ++ie) {
+			xp = sf + se * grids.Re[ie] + grids.y[iyP + p.nyP * iyT];
+			for (int ip=0; ip<p.np; ++ip) {
+				for (int iyP2=0; iyP2<p.nyP; ++iyP2) {
+					ev +=
+						grids.lpref_dist[ip] * grids.Re_dist[ie]
+						* grids.yP_trans[iyP + p.nyP * iyP2] * grids.yT_dist[iyT]
+						* linterp1(grids.x, vviews[iyP2 + p.nyP * ip, p.nx, xp);
+				}
+			}
+		}
+	}
+	return ev;
+}
+
+void BellmanImpl::compute_value_t()
+{
 	ObjArgs args;
 	args.gam = p.gam;
 	args.phi1 = p.phi1;
@@ -90,20 +141,18 @@ void Bellman::compute_value_t()
 		args.x = grids.x[ix];
 		for (int iyP=0; iyP<p.nyP; ++iyP) {
 			auto idx = boost::indices[range()][range()][iyP];
-			arg->values = impl->EV[idx];
+			arg->values = EV[idx];
 			for (int ip=0; ip<p.np; ++ip) {
-				solve_decisions(this, ix, iyP, ip, args);
+				solve_decisions(ix, iyP, ip, args);
 			}
 		}
 	}
-	--(impl->t);
+	--t;
 }
 
-void solve_decisions(BellmanImpl* impl, int ix, int iyP, int ip,
-	ObjArgs& args)
+void BellmanImpl::solve_decisions(int ix, int iyP,
+	int ip, const ObjArgs& args)
 {
-	const Parameters& p = impl->p;
-	const Grids& grids = impl->grids;
 	double x = grids.x[ix];
 	double lprefshock = grids.lpref[ip];
 
@@ -123,6 +172,21 @@ void solve_decisions(BellmanImpl* impl, int ix, int iyP, int ip,
 		for (int ise=0; ise<p.n_se; ++ise) {
 			se = grids.se[ise];
 		}
+	}
+}
+
+Bellman::Bellman(const Parameters& p, const Grids& grids)
+{
+	impl.reset(new BellmanImpl(p, grids));
+}
+
+void Bellman::solve()
+{
+	impl.compute_terminal_value();
+
+	while (impl->t >= 0) {
+		impl.update_EV();
+		impl.compute_value_t();
 	}
 }
 
@@ -149,64 +213,6 @@ void objective(z, void* args)
 		args->n_sf, args->n_se, sf, se);
 
 	return u + args->beta * ev;
-}
-
-void Bellman::update_EV()
-{
-	// Computes continuation value as a function of sf, se, y.
-	//
-	// sf : Amount invested in safe assets, after interest
-	// se : Amount invested in equity, before return
-
-	double sf, se, xp;
-	int n_sf, n_se, n_re, nyP, np;
-	n_sf = p->n_sf;
-	n_se = p->n_se;
-	n_re = p->n_re;
-	nyP = p->nyP;
-	np = p->np;
-
-	arr3d& evref = impl->EV;
-
-	const Grids& grids = impl->grids;
-	const Income& income = impl->income;
-
-	boost::array<arr3d::index, 3> shape = {{ p->nx, ny, np }};
-
-	// Compute V' by interpolation
-	double vp[n_y];
-	for (int isf=0; isf<n_sf; ++isf) {
-		sf = grids.sf[isf];
-		for (int ise=0; ise<n_se; ++ise) {
-			se = grids.se[ise];
-			for (int iyP=0; iy<nyP; ++iyP) {
-				// Expectation of next period's value wrt returns process
-				// and preference state
-				vp[iyP] = 0;
-				for (int ip=0; ip<np; ++ip) {
-					arr3d::view<1> values =
-						impl->V[ boost::indices[range()][iyP][ip] ];
-					for (int ie=0; ie<n_re; ++ie) {
-						for (int iyT=0; iyT<nyT; ++iyT) {
-							// Next period's cash-on-hand
-							xp = sf + se * grids.Re[ie] + grids.y(iyP, iyT);
-							vp[iyP] += grids.lpref_dist[ip] * grids.Re_dist[ie]
-								* linterp1(grids.x, values, p->nx, xp);
-						}
-					}
-				}
-			}
-
-			// Take expectation over income
-			for (int iyP=0; iyP<nyP; ++iyP) {
-				evref[isf][ise][iyP] = 0.0;
-				for (int iyP2=0; iyP2<nyP; ++iyP2) {
-					evref[isf][ise][iyP] += income.yP_trans(iyP, iyP2) * vp[iyP2];
-				}
-				evref[isf][ise][iyP] *= p->beta;
-			}
-		}
-	}
 }
 
 namespace {

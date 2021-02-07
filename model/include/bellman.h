@@ -11,6 +11,8 @@
 
 class Parameters;
 
+class Grids;
+
 class BellmanImpl;
 
 class Bellman {
@@ -18,11 +20,7 @@ class Bellman {
 		std::unique_ptr<BellmanImpl> impl;
 
 	public:
-		Bellman(const Parameters& p);
-
-		void update_EV();
-
-		double continuation_value(double sf, double se, int k) const;
+		Bellman(const Parameters& p, const Grids& grids);
 };
 
 // double value(const arma::vec& z, arma::vec* grad, void* args) {
