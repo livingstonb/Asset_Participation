@@ -56,6 +56,11 @@ namespace {
 
 	double wrapper_cd_util(double c, double m, const ObjArgs& args);
 
+	nlopt::opt set_nlopt(nlopt::vfunc& objfn, int n,
+		const std::vector<double>& lb,
+		const std::vector<double>& ub,
+		void* args);
+
 	template<bool T1, bool T2, bool T3>
 	double value_fn_impl(const std::vector<double>& z,
 		std::vector<double>& grad, void* vargs);
@@ -268,17 +273,14 @@ void BellmanImpl::solve_decisions(int ix, int iyP,
 	results.q_b = 0;
 	results.q_e = 0;
 
-	// Saving in bonds only, maximize over s
+	// Only one investment vehicle
 	lb1[0] = 1.0e-9;
 	ub1[0] = x - 1.0e-9;
 	z1[0] = 0.5 * ub1[0];
+
+	// Saving in bonds only, maximize over s
 	nlopt::vfunc objfn_b_only = value_fn_impl<true,false,true>;
-	nlopt::opt opt_b_only(nlopt::LD_LBFGS, 1);
-	opt_b_only.set_lower_bounds(lb1);
-	opt_b_only.set_upper_bounds(ub1);
-	opt_b_only.set_max_objective(objfn_b_only, voidargs);
-	nlopt::vfunc objfn_b_only = nlopt_obj(
-		true, false, true, 1, lb1, ub1)
+	nlopt::opt opt_b_only = set_nlopt(objfn_b_only, 1, lb1, ub1, voidargs);
 	optres = opt_b_only.optimize(z1, val);
 	if ( (val > results.v) & (optres == nlopt::SUCCESS) ) {
 		results.v = val;
@@ -288,15 +290,8 @@ void BellmanImpl::solve_decisions(int ix, int iyP,
 	}
 
 	// Saving in stocks only, maximize over s
-	lb1[0] = 1.0e-9;
-	ub1[0] = x - 1.0e-9;
-	z1[0] = 0.5 * ub1[0];
 	nlopt::vfunc objfn_s_only = value_fn_impl<true,true,false>;
-	// success = lbfgs_wrapper(&z1, objfn_s_only, (void*) &args, &lb, &ub, 1);
-	nlopt::opt opt_s_only(nlopt::LD_LBFGS, 1);
-	opt_s_only.set_lower_bounds(lb1);
-	opt_s_only.set_upper_bounds(ub1);
-	opt_s_only.set_max_objective(objfn_s_only, voidargs);
+	nlopt::opt opt_s_only = set_nlopt(objfn_s_only, 1, lb1, ub1, voidargs);
 	optres = opt_s_only.optimize(z1, val);
 	if ( (val > results.v) & (optres == nlopt::SUCCESS) ) {
 		results.v = val;
@@ -306,15 +301,8 @@ void BellmanImpl::solve_decisions(int ix, int iyP,
 	}
 
 	// Saving in money only, maximize over s
-	lb1[0] = 1.0e-9;
-	ub1[0] = x - 1.0e-9;
-	z1[0] = 0.5 * ub1[0];
-	nlopt::vfunc objfn_m_only = value_fn_impl<false,true,true>;
-	// success = lbfgs_wrapper(&z1, objfn_m_only, (void*) &args, &lb, &ub, 1);
-	nlopt::opt opt_m_only(nlopt::LD_LBFGS, 1);
-	opt_m_only.set_lower_bounds(lb1);
-	opt_m_only.set_upper_bounds(ub1);
-	opt_m_only.set_max_objective(objfn_m_only, voidargs);
+	nlopt::vfunc objfn_m_only = value_fn_impl<true,true,false>;
+	nlopt::opt opt_m_only = set_nlopt(objfn_m_only, 1, lb1, ub1, voidargs);
 	optres = opt_m_only.optimize(z1, val);
 	if ( (val > results.v) & (optres == nlopt::SUCCESS) ) {
 		results.v = val;
@@ -331,11 +319,7 @@ void BellmanImpl::solve_decisions(int ix, int iyP,
 	z2[0] = 0.5 * ub2[0];
 	z2[1] = 0.5;
 	nlopt::vfunc objfn_m_b_only = value_fn_impl<false,false,true>;
-	// success = lbfgs_wrapper(z2, objfn_m_b_only, (void*) &args, lb2, ub2, 2);
-	nlopt::opt opt_m_b_only(nlopt::LD_LBFGS, 2);
-	opt_m_b_only.set_lower_bounds(lb2);
-	opt_m_b_only.set_upper_bounds(ub2);
-	opt_m_b_only.set_max_objective(objfn_m_b_only, voidargs);
+	nlopt::opt opt_m_b_only = set_nlopt(objfn_m_b_only, 2, lb2, ub2, voidargs);
 	optres = opt_m_b_only.optimize(z2, val);
 	if ( (val > results.v) & (optres == nlopt::SUCCESS) ) {
 		results.v = val;
@@ -352,11 +336,7 @@ void BellmanImpl::solve_decisions(int ix, int iyP,
 	z2[0] = 0.5 * ub2[0];
 	z2[1] = 0.5;
 	nlopt::vfunc objfn_m_s_only = value_fn_impl<false,true,false>;
-	// success = lbfgs_wrapper(z2, objfn_m_s_only, (void*) &args, lb2, ub2, 2);
-	nlopt::opt opt_m_s_only(nlopt::LD_LBFGS, 2);
-	opt_m_s_only.set_lower_bounds(lb2);
-	opt_m_s_only.set_upper_bounds(ub2);
-	opt_m_s_only.set_max_objective(objfn_m_s_only, voidargs);
+	nlopt::opt opt_m_s_only = set_nlopt(objfn_m_s_only, 2, lb2, ub2, voidargs);
 	optres = opt_m_s_only.optimize(z2, val);
 	if ( (val > results.v) & (optres == nlopt::SUCCESS) ) {
 		results.v = val;
@@ -373,11 +353,7 @@ void BellmanImpl::solve_decisions(int ix, int iyP,
 	z2[0] = 0.5 * ub2[0];
 	z2[1] = 0.5;
 	nlopt::vfunc objfn_b_s_only = value_fn_impl<true,false,false>;
-	// success = lbfgs_wrapper(z2, objfn_b_s_only, (void*) &args, lb2, ub2, 2);
-	nlopt::opt opt_b_s_only(nlopt::LD_LBFGS, 2);
-	opt_b_s_only.set_lower_bounds(lb2);
-	opt_b_s_only.set_upper_bounds(ub2);
-	opt_b_s_only.set_max_objective(objfn_b_s_only, voidargs);
+	nlopt::opt opt_b_s_only = set_nlopt(objfn_b_s_only, 2, lb2, ub2, voidargs);
 	optres = opt_b_s_only.optimize(z2, val);
 	if ( (val > results.v) & (optres == nlopt::SUCCESS) ) {
 		results.v = val;
@@ -392,11 +368,7 @@ void BellmanImpl::solve_decisions(int ix, int iyP,
 	z3[2] = 0.5;
 
 	nlopt::vfunc objfn_interior = value_fn_impl<false,false,false>;
-	// success = lbfgs_wrapper(z3, objfn_interior, (void*) &args, args.lb, args.ub, 3);
-	nlopt::opt opt_interior(nlopt::LD_LBFGS, 3);
-	opt_interior.set_lower_bounds(args.lb);
-	opt_interior.set_upper_bounds(args.ub);
-	opt_interior.set_max_objective(objfn_interior, voidargs);
+	nlopt::opt opt_interior = set_nlopt(objfn_interior, 3, args.lb, args.ub, voidargs);
 	optres = opt_interior.optimize(z3, val);
 	if ( (val > results.v) & (optres == nlopt::SUCCESS) ) {
 		results.v = val;
@@ -438,6 +410,18 @@ namespace {
 	double wrapper_cd_util(double c, double m, const ObjArgs& args)
 	{
 		return cd_util(c, m, args.gam, args.phi1, args.phi2);
+	}
+
+	nlopt::opt set_nlopt(nlopt::vfunc& objfn, int n,
+		const std::vector<double>& lb,
+		const std::vector<double>& ub,
+		void* args)
+	{
+		nlopt::opt opt_obj(nlopt::LD_LBFGS, n);
+		opt_obj.set_lower_bounds(lb);
+		opt_obj.set_upper_bounds(ub);
+		opt_obj.set_max_objective(objfn, args);
+		return opt_obj;
 	}
 
 	template<bool T1, bool T2, bool T3>
