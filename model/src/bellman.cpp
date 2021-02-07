@@ -12,11 +12,15 @@ namespace {
 	struct ObjArgs {
 		ObjArgs(const std::vector<double>& sfgrid_,
 			const std::vector<double>& segrid_)
-			: sfgrid(sfgrid_), segrid(segrid_) {}
+			: sfgrid(sfgrid_), segrid(segrid_)
+		{
+			n_sf = sfgrid.size();
+			n_se = segrid.size();
+		}
 
 		double x, gam, phi1, phi2, Rb, beta;
 
-		std::shared_ptr<arr3d::array_view<2>::type> evalues = nullptr;
+		arr3d::array_view<2>::type* evalues = nullptr;
 
 		const std::vector<double>& sfgrid;
 
@@ -35,7 +39,11 @@ class BellmanImpl {
 		BellmanImpl(const Parameters& p_, const Grids& grids_)
 			: p(p_), grids(grids_),
 				V(boost::extents[grids.nx][grids.nyP][grids.np]),
-				EV(boost::extents[grids.n_sf][grids.n_se][grids.nyP])
+				EV(boost::extents[grids.n_sf][grids.n_se][grids.nyP]),
+				c(boost::extents[grids.nx][grids.nyP][grids.np]),
+				s(boost::extents[grids.nx][grids.nyP][grids.np]),
+				q_b(boost::extents[grids.nx][grids.nyP][grids.np]),
+				q_e(boost::extents[grids.nx][grids.nyP][grids.np])
 		{
 			nx = grids.nx;
 			n_sf = grids.n_sf;
@@ -65,7 +73,7 @@ class BellmanImpl {
 
 		const Grids& grids;
 
-		arr3d V, EV;
+		arr3d V, EV, c, s, q_b, q_e;
 
 		double xmax, curv;
 
@@ -154,7 +162,7 @@ void BellmanImpl::compute_value_t()
 		for (int iyP=0; iyP<nyP; ++iyP) {
 			auto idx = indices[range()][range()][iyP];
 			arr3d::array_view<2>::type ev = EV[idx];
-			args.evalues.reset(&ev);
+			args.evalues = &ev;
 			for (int ip=0; ip<np; ++ip) {
 				solve_decisions(ix, iyP, ip, args);
 			}
