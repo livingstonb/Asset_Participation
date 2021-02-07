@@ -5,10 +5,16 @@
 #include <grids.h>
 #include <functions.h>
 #include <optimization.h>
+
+#include <nlopt.hpp>
+
 #include <iostream>
 #include <fstream>
 #include <functional>
 #include <memory>
+
+ using nloptfunc = std::function<double(
+ 	const std::vector<double>&, std::vector<double>&, void*)>;
 
 namespace {
 	struct ObjArgs {
@@ -18,6 +24,8 @@ namespace {
 		{
 			n_sf = sfgrid.size();
 			n_se = segrid.size();
+			lb.resize(3);
+			ub.resize(3);
 		}
 
 		double x, gam, phi1, phi2, Rb, beta, xmax;
@@ -30,9 +38,9 @@ namespace {
 
 		int n_sf, n_se;
 
-		double lb[3];
+		std::vector<double> lb;
 
-		double ub[3];
+		std::vector<double> ub;
 	};
 
 	struct OptResults {
@@ -48,7 +56,12 @@ namespace {
 
 	double wrapper_cd_util(double c, double m, const ObjArgs& args);
 
-	double value_fn(const double* z, void* vargs, bool m0, bool b0, bool e0);
+	template<bool T1, bool T2, bool T3>
+	double value_fn_impl(const std::vector<double>& z,
+		std::vector<double>& grad, void* vargs);
+
+	double value_fn(const std::vector<double>& z,
+		void* vargs, bool m0, bool b0, bool e0);
 }
 
 class BellmanImpl {
@@ -81,7 +94,7 @@ class BellmanImpl {
 		void compute_value_t();
 
 		void solve_decisions(int ix, int iyP, int ip,
-			const ObjArgs& args);
+			ObjArgs& args);
 
 		double val_EV(double sf, double se, int iyP,
 			const std::vector<arr3d::array_view<1>::type>& vviews) const;
@@ -198,7 +211,7 @@ void BellmanImpl::compute_value_t()
 		}
 	}
 
-	if (t == p.T - 8) {
+	if (t == p.T - 5) {
 		std::ofstream policyfuns("output/policies.csv");
 		policyfuns << "V, x, s, c, q_b, q_e\n";
 
@@ -207,9 +220,9 @@ void BellmanImpl::compute_value_t()
 		for (int ix=0; ix<nx; ++ix) {
 			policyfuns << V[ix][iyP][ip] << ",";
 			policyfuns << grids.x[ix] << ",";
-			policyfuns	<< s[ix][iyP][ip] << ",";
+			policyfuns << s[ix][iyP][ip] << ",";
 			policyfuns << c[ix][iyP][ip] << ",";
-			policyfuns	<< q_b[ix][iyP][ip] << ",";
+			policyfuns << q_b[ix][iyP][ip] << ",";
 			policyfuns << q_e[ix][iyP][ip] << "\n";
 		}
 		policyfuns.close();
@@ -232,73 +245,80 @@ void BellmanImpl::compute_value_t()
 }
 
 void BellmanImpl::solve_decisions(int ix, int iyP,
-	int ip, const ObjArgs& args)
+	int ip, ObjArgs& args)
 {
 	OptResults results;
+	nlopt::result optres;
 	double val, x = grids.x[ix];
 	double lprefshock = grids.lpref[ip];
-	double z3[3];
-	double z2[2];
-	double lb2[2];
-	double ub2[2];
-	double z1, lb, ub;
-	bool success;
+	std::vector<double> z3(3);
+	std::vector<double> z2(2);
+	std::vector<double> lb2(2);
+	std::vector<double> ub2(2);
+	std::vector<double> lb1(1);
+	std::vector<double> ub1(1);
+	std::vector<double> z1(1);
+	void* voidargs = (void*) &args;
 	
 	// No saving
-	z1 = 0;
-	val = value_fn(&z1, (void*) &args, true, true, true);
+	z1[0] = 0;
+	val = value_fn(z1, (void*) &args, true, true, true);
 	results.v = val;
-	results.s = z1;
+	results.s = z1[0];
 	results.q_b = 0;
 	results.q_e = 0;
 
 	// Saving in bonds only, maximize over s
-	lb = 1.0e-9;
-	ub = x - 1.0e-9;
-	z1 = 0.5 * ub;
-	const std::function<double(const double*, void*)>& objfn_b_only
-		= [&](const double* zz, void* aargs) {
-			return value_fn(zz, aargs, true, false, true);
-		};
-	success = lbfgs_wrapper(&z1, objfn_b_only, (void*) &args, &lb, &ub, 1);
-	val = objfn_b_only(&z1, (void*) &args);
-	if ( (val > results.v) & success ) {
+	lb1[0] = 1.0e-9;
+	ub1[0] = x - 1.0e-9;
+	z1[0] = 0.5 * ub1[0];
+	nlopt::vfunc objfn_b_only = value_fn_impl<true,false,true>;
+	nlopt::opt opt_b_only(nlopt::LD_LBFGS, 1);
+	opt_b_only.set_lower_bounds(lb1);
+	opt_b_only.set_upper_bounds(ub1);
+	opt_b_only.set_max_objective(objfn_b_only, voidargs);
+	nlopt::vfunc objfn_b_only = nlopt_obj(
+		true, false, true, 1, lb1, ub1)
+	optres = opt_b_only.optimize(z1, val);
+	if ( (val > results.v) & (optres == nlopt::SUCCESS) ) {
 		results.v = val;
-		results.s = z1;
+		results.s = z1[0];
 		results.q_b = 1;
 		results.q_e = 0;
 	}
 
 	// Saving in stocks only, maximize over s
-	lb = 1.0e-9;
-	ub = x - 1.0e-9;
-	z1 = 0.5 * ub;
-	const std::function<double(const double*, void*)>& objfn_s_only
-		= [&](const double* zz, void* aargs) {
-			return value_fn(zz, aargs, true, true, false);
-		};
-	success = lbfgs_wrapper(&z1, objfn_s_only, (void*) &args, &lb, &ub, 1);
-	val = objfn_s_only(&z1, (void*) &args);
-	if ( (val > results.v) & success ) {
+	lb1[0] = 1.0e-9;
+	ub1[0] = x - 1.0e-9;
+	z1[0] = 0.5 * ub1[0];
+	nlopt::vfunc objfn_s_only = value_fn_impl<true,true,false>;
+	// success = lbfgs_wrapper(&z1, objfn_s_only, (void*) &args, &lb, &ub, 1);
+	nlopt::opt opt_s_only(nlopt::LD_LBFGS, 1);
+	opt_s_only.set_lower_bounds(lb1);
+	opt_s_only.set_upper_bounds(ub1);
+	opt_s_only.set_max_objective(objfn_s_only, voidargs);
+	optres = opt_s_only.optimize(z1, val);
+	if ( (val > results.v) & (optres == nlopt::SUCCESS) ) {
 		results.v = val;
-		results.s = z1;
+		results.s = z1[0];
 		results.q_b = 0;
 		results.q_e = 1;
 	}
 
 	// Saving in money only, maximize over s
-	lb = 1.0e-9;
-	ub = x - 1.0e-9;
-	z1 = 0.5 * ub;
-	const std::function<double(const double*, void*)>& objfn_m_only
-		= [&](const double* zz, void* aargs) {
-			return value_fn(zz, aargs, false, true, true);
-		};
-	success = lbfgs_wrapper(&z1, objfn_m_only, (void*) &args, &lb, &ub, 1);
-	val = objfn_m_only(&z1, (void*) &args);
-	if ( (val > results.v) & success ) {
+	lb1[0] = 1.0e-9;
+	ub1[0] = x - 1.0e-9;
+	z1[0] = 0.5 * ub1[0];
+	nlopt::vfunc objfn_m_only = value_fn_impl<false,true,true>;
+	// success = lbfgs_wrapper(&z1, objfn_m_only, (void*) &args, &lb, &ub, 1);
+	nlopt::opt opt_m_only(nlopt::LD_LBFGS, 1);
+	opt_m_only.set_lower_bounds(lb1);
+	opt_m_only.set_upper_bounds(ub1);
+	opt_m_only.set_max_objective(objfn_m_only, voidargs);
+	optres = opt_m_only.optimize(z1, val);
+	if ( (val > results.v) & (optres == nlopt::SUCCESS) ) {
 		results.v = val;
-		results.s = z1;
+		results.s = z1[0];
 		results.q_b = 0;
 		results.q_e = 0;
 	}
@@ -310,13 +330,14 @@ void BellmanImpl::solve_decisions(int ix, int iyP,
 	ub2[1] = 1.0 - 1.0e-9;
 	z2[0] = 0.5 * ub2[0];
 	z2[1] = 0.5;
-	const std::function<double(const double*, void*)>& objfn_m_b_only
-		= [&](const double* zz, void* aargs) {
-			return value_fn(zz, aargs, false, false, true);
-		};
-	success = lbfgs_wrapper(z2, objfn_m_b_only, (void*) &args, lb2, ub2, 2);
-	val = objfn_m_b_only(z2, (void*) &args);
-	if ( (val > results.v) & success ) {
+	nlopt::vfunc objfn_m_b_only = value_fn_impl<false,false,true>;
+	// success = lbfgs_wrapper(z2, objfn_m_b_only, (void*) &args, lb2, ub2, 2);
+	nlopt::opt opt_m_b_only(nlopt::LD_LBFGS, 2);
+	opt_m_b_only.set_lower_bounds(lb2);
+	opt_m_b_only.set_upper_bounds(ub2);
+	opt_m_b_only.set_max_objective(objfn_m_b_only, voidargs);
+	optres = opt_m_b_only.optimize(z2, val);
+	if ( (val > results.v) & (optres == nlopt::SUCCESS) ) {
 		results.v = val;
 		results.s = z2[0];
 		results.q_b = z2[1];
@@ -330,13 +351,14 @@ void BellmanImpl::solve_decisions(int ix, int iyP,
 	ub2[1] = 1.0 - 1.0e-9;
 	z2[0] = 0.5 * ub2[0];
 	z2[1] = 0.5;
-	const std::function<double(const double*, void*)>& objfn_m_s_only
-		= [&](const double* zz, void* aargs) {
-			return value_fn(zz, aargs, false, true, false);
-		};
-	success = lbfgs_wrapper(z2, objfn_m_s_only, (void*) &args, lb2, ub2, 2);
-	val = objfn_m_s_only(z2, (void*) &args);
-	if ( (val > results.v) & success ) {
+	nlopt::vfunc objfn_m_s_only = value_fn_impl<false,true,false>;
+	// success = lbfgs_wrapper(z2, objfn_m_s_only, (void*) &args, lb2, ub2, 2);
+	nlopt::opt opt_m_s_only(nlopt::LD_LBFGS, 2);
+	opt_m_s_only.set_lower_bounds(lb2);
+	opt_m_s_only.set_upper_bounds(ub2);
+	opt_m_s_only.set_max_objective(objfn_m_s_only, voidargs);
+	optres = opt_m_s_only.optimize(z2, val);
+	if ( (val > results.v) & (optres == nlopt::SUCCESS) ) {
 		results.v = val;
 		results.s = z2[0];
 		results.q_b = 0;
@@ -350,13 +372,14 @@ void BellmanImpl::solve_decisions(int ix, int iyP,
 	ub2[1] = 1.0 - 1.0e-9;
 	z2[0] = 0.5 * ub2[0];
 	z2[1] = 0.5;
-	const std::function<double(const double*, void*)>& objfn_b_s_only
-		= [&](const double* zz, void* aargs) {
-			return value_fn(zz, aargs, true, false, false);
-		};
-	success = lbfgs_wrapper(z2, objfn_b_s_only, (void*) &args, lb2, ub2, 2);
-	val = objfn_b_s_only(z2, (void*) &args);
-	if ( (val > results.v) & success ) {
+	nlopt::vfunc objfn_b_s_only = value_fn_impl<true,false,false>;
+	// success = lbfgs_wrapper(z2, objfn_b_s_only, (void*) &args, lb2, ub2, 2);
+	nlopt::opt opt_b_s_only(nlopt::LD_LBFGS, 2);
+	opt_b_s_only.set_lower_bounds(lb2);
+	opt_b_s_only.set_upper_bounds(ub2);
+	opt_b_s_only.set_max_objective(objfn_b_s_only, voidargs);
+	optres = opt_b_s_only.optimize(z2, val);
+	if ( (val > results.v) & (optres == nlopt::SUCCESS) ) {
 		results.v = val;
 		results.s = z2[0];
 		results.q_b = z2[1];
@@ -368,14 +391,19 @@ void BellmanImpl::solve_decisions(int ix, int iyP,
 	z3[1] = 0.5;
 	z3[2] = 0.5;
 
-	const std::function<double(const double*, void*)>& objfn_interior
-		= [&](const double* zz, void* aargs) {
-			return value_fn(zz, aargs, false, true, false);
-		};
-	success = lbfgs_wrapper(z3, objfn_interior, (void*) &args, args.lb, args.ub, 3);
-	val = objfn_interior(z3, (void*) &args);
-	if ( (val > results.v) & success )
-		results.set(val, z3);
+	nlopt::vfunc objfn_interior = value_fn_impl<false,false,false>;
+	// success = lbfgs_wrapper(z3, objfn_interior, (void*) &args, args.lb, args.ub, 3);
+	nlopt::opt opt_interior(nlopt::LD_LBFGS, 3);
+	opt_interior.set_lower_bounds(args.lb);
+	opt_interior.set_upper_bounds(args.ub);
+	opt_interior.set_max_objective(objfn_interior, voidargs);
+	optres = opt_interior.optimize(z3, val);
+	if ( (val > results.v) & (optres == nlopt::SUCCESS) ) {
+		results.v = val;
+		results.s = z2[0];
+		results.q_b = z2[1] * z2[2];
+		results.q_e = z2[1] * (1.0 - z2[2]);
+	}
 
 	s[ix][iyP][ip] = results.s;
 	c[ix][iyP][ip] = x - results.s;
@@ -412,7 +440,15 @@ namespace {
 		return cd_util(c, m, args.gam, args.phi1, args.phi2);
 	}
 
-	double value_fn(const double* z, void* vargs, bool m0, bool b0, bool e0)
+	template<bool T1, bool T2, bool T3>
+	double value_fn_impl(const std::vector<double>& z,
+		std::vector<double>& grad, void* vargs)
+	{
+		return value_fn(z, vargs, T1, T2, T3);
+	}
+
+	double value_fn(const std::vector<double>& z,
+		void* vargs, bool m0, bool b0, bool e0)
 	{
 		const ObjArgs* args = (ObjArgs*) vargs;
 
