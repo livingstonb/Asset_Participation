@@ -20,7 +20,7 @@
 using optimlib_fn = std::function<double(const double*, void*)>;
 
 bool lbfgs_wrapper(double* z, const optimlib_fn& test_fn, void* args,
-	const double* lb, const double* ub);
+	const double* lb, const double* ub, int n);
 
 bool test_opt(const double*, int n);
 

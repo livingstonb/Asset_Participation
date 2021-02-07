@@ -48,7 +48,17 @@ namespace {
 
 	double wrapper_cd_util(double c, double m, const ObjArgs& args);
 
-	double value_fn(const double* z, void* vargs);
+	double value_fn_b_only(const double* z, void* vargs);
+
+	double value_fn_s_only(const double* z, void* vargs);
+
+	// double value_fn_b_s_only(const double* z, void* vargs);
+
+	// double value_fn_m_b_only(const double* z, void* vargs);
+
+	// double value_fn_m_s_only(const double* z, void* vargs);
+
+	double value_fn_interior(const double* z, void* vargs);
 }
 
 class BellmanImpl {
@@ -238,46 +248,64 @@ void BellmanImpl::solve_decisions(int ix, int iyP,
 	OptResults results;
 	double val, x = grids.x[ix];
 	double lprefshock = grids.lpref[ip];
-	double z0[3];
+	double z3[3];
+	double z1, lb, ub;
+	bool success;
 	
 	// Evaluate corners
 	// NEED TO MAXIMIZE OVER REMAINING VARIABLES AT CORNER
-	z0[0] = 0.0;
-	z0[1] = 0.0;
-	z0[2] = 0.0;
-	val = value_fn(z0, (void*) &args);
-	results.set(val, z0);
 
-	z0[0] = 0.1;
-	z0[1] = 1.0;
-	z0[0] = 0.0;
-	val = value_fn(z0, (void*) &args);
-	if (val > results.v)
-		results.set(val, z0);
+	// No saving
+	z3[0] = 0.0;
+	z3[1] = 0.0;
+	z3[2] = 0.0;
+	val = value_fn_interior(z3, (void*) &args);
+	results.set(val, z3);
 
-	z0[0] = 0.1;
-	z0[1] = 1.0;
-	z0[2] = 1.0;
-	val = value_fn(z0, (void*) &args);
-	if (val > results.v)
-		results.set(val, z0);
+	// Saving in bonds only, maximize over s
+	lb = 1.0e-9;
+	ub = x - 1.0e-9;
+	z1 = 0.5 * x;
+	const std::function<double(const double*, void*)>& objfn_b_only = value_fn_b_only;
+	success = lbfgs_wrapper(&z1, objfn_b_only, (void*) &args, &lb, &ub, 1);
+	val = objfn_b_only(&z1, (void*) &args);
+	if ( (val > results.v) & success ) {
+		results.v = val;
+		results.s = z1;
+		results.q_b = 1;
+		results.q_e = 0;
+	}
+
+	// Saving in stocks only, maximize over s
+	lb = 1.0e-9;
+	ub = x - 1.0e-9;
+	z1 = 0.5 * x;
+	const std::function<double(const double*, void*)>& objfn_s_only = value_fn_s_only;
+	success = lbfgs_wrapper(&z1, objfn_s_only, (void*) &args, &lb, &ub, 1);
+	val = objfn_s_only(&z1, (void*) &args);
+	if ( (val > results.v) & success ) {
+		results.v = val;
+		results.s = z1;
+		results.q_b = 0;
+		results.q_e = 1;
+	}
 
 	// Look for interior solution
-	z0[0] = 0.5 * x; // s
-	z0[1] = 0.5; // q_b
-	z0[2] = 0.5; // q_e
+	z3[0] = 0.5 * x; // s
+	z3[1] = 0.5; // q_b
+	z3[2] = 0.5; // q_e
 
-	const std::function<double(const double*, void*)>& objfn = value_fn;
-	bool success = lbfgs_wrapper(z0, objfn, (void*) &args, args.lb, args.ub);
-	val = value_fn(z0, (void*) &args);
+	const std::function<double(const double*, void*)>& objfn_interior = value_fn_interior;
+	success = lbfgs_wrapper(z3, objfn_interior, (void*) &args, args.lb, args.ub, 3);
+	val = objfn_interior(z3, (void*) &args);
 	if ( (val > results.v) & success )
-		results.set(val, z0);
+		results.set(val, z3);
 
 	s[ix][iyP][ip] = results.s;
 	c[ix][iyP][ip] = x - results.s;
 	q_b[ix][iyP][ip] = results.q_b;
 	q_e[ix][iyP][ip] = results.q_e;
-	V[ix][iyP][ip] = value_fn(z0, (void*) &args);
+	V[ix][iyP][ip] = results.v;
 }
 
 Bellman::Bellman(const Parameters& p, const Grids& grids)
@@ -308,7 +336,49 @@ namespace {
 		return cd_util(c, m, args.gam, args.phi1, args.phi2);
 	}
 
-	double value_fn(const double* z, void* vargs)
+	double value_fn_b_only(const double* z, void* vargs)
+	{
+		const ObjArgs* args = (ObjArgs*) vargs;
+
+		double c, s, q_b;
+		s = z[0];
+		q_b = 1;
+		c = args->x - s;
+
+		double m, u, sf, se, ev;
+		m = 0;
+		u = wrapper_cd_util(c, m, *args);
+		sf = s * args->Rb;
+		se = 0;
+
+		ev = linterp2(args->sfgrid, args->segrid, *(args->evalues),
+			args->n_sf, args->n_se, sf, se);
+
+		return u + args->beta * ev;
+	}
+
+	double value_fn_s_only(const double* z, void* vargs)
+	{
+		const ObjArgs* args = (ObjArgs*) vargs;
+
+		double c, s, q_e;
+		s = z[0];
+		q_e = 1;
+		c = args->x - s;
+
+		double m, u, sf, se, ev;
+		m = 0;
+		u = wrapper_cd_util(c, m, *args);
+		sf = 0;
+		se = s;
+
+		ev = linterp2(args->sfgrid, args->segrid, *(args->evalues),
+			args->n_sf, args->n_se, sf, se);
+
+		return u + args->beta * ev;
+	}
+
+	double value_fn_interior(const double* z, void* vargs)
 	{
 		const ObjArgs* args = (ObjArgs*) vargs;
 

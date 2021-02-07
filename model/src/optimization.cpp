@@ -6,12 +6,11 @@
 
 
 bool lbfgs_wrapper(double* z, const optimlib_fn& obj_fn, void* args,
-	const double* lb, const double* ub)
+	const double* lb, const double* ub, int n)
 {
-	arma::vec ax(3, 1);
-	ax(0) = z[0];
-	ax(1) = z[1];
-	ax(2) = z[2];
+	arma::vec ax(n, 1);
+	for (int i=0; i<n; ++i)
+		ax(i) = z[i];
 
 	std::function<double(const arma::vec&, arma::vec*, void*)>
 		fn = [&](const arma::vec& data, arma::vec* grad, void* opts)
@@ -22,24 +21,15 @@ bool lbfgs_wrapper(double* z, const optimlib_fn& obj_fn, void* args,
 
 	optim::algo_settings_t options;
 	options.vals_bound = true;
-	// arma::vec lb(3, 1);
-	// lb[0] = 0.0;
-	// lb[1] = 0.0;
-	// lb[2] = 0.0;
-	// arma::vec ub(3, 1);
-	// ub[0] = 200.0;
-	// ub[1] = 0.5;
-	// ub[2] = 0.5;
-	// options.lower_bounds = lb;
-	// options.upper_bounds = ub;
-	options.lower_bounds = arma::vec(lb, 3);
-	options.upper_bounds = arma::vec(ub, 3);
+
+	options.lower_bounds = arma::vec(lb, n);
+	options.upper_bounds = arma::vec(ub, n);
 
 	bool success = optim::nm(ax, fn, args, options);
 
-	z[0] = ax(0);
-	z[1] = ax(1);
-	z[2] = ax(2);
+	for (int i=0; i<n; ++i)
+		z[i] = ax(i);
+
 	return success;
 }
 
