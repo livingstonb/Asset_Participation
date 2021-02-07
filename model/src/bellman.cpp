@@ -190,6 +190,12 @@ void BellmanImpl::solve_decisions(int ix, int iyP,
 
 	const std::function<double(const double*, void*)>& objfn = objective;
 	bool success = lbfgs_wrapper(z0, objfn, (void*) &args);
+
+	s[ix][iyP][ip] = z0[0];
+	c[ix][iyP][ip] = x - z0[0];
+	q_b[ix][iyP][ip] = z0[1];
+	q_e[ix][iyP][ip] = z0[2];
+	V[ix][iyP][ip] = -objfn(z0, (void*) &args);
 }
 
 Bellman::Bellman(const Parameters& p, const Grids& grids)
@@ -240,6 +246,6 @@ namespace {
 		ev = linterp2(args->sfgrid, args->segrid, *(args->evalues),
 			args->n_sf, args->n_se, sf, se);
 
-		return u + args->beta * ev;
+		return -(u + args->beta * ev);
 	}
 }
