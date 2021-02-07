@@ -3,6 +3,8 @@
 
 #include<vector>
 
+class Parameters;
+
 class Grids {
 	public:
 		Grids();
@@ -21,10 +23,12 @@ class Grids {
 		int nyP = 2;
 		int nyT = 1;
 		int np = 1;
+
+		int nx = 50;
 		double xmax = 200;
 		double curv = 0.2;
 
-		std::vector<double> se, sf, Re, Re_dist, yP, yP_dist, y_dist;
+		std::vector<double> x, se, sf, Re, Re_dist, yP, yP_dist, y_dist;
 
 		std::vector<double> yT, yT_dist, y, lpref, lpref_dist, yP_trans;
 };

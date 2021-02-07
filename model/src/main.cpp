@@ -4,12 +4,12 @@
 #include <iostream>
 #include <Parameters.h>
 #include <Grids.h>
-// #include <Bellman.h>
+#include <Bellman.h>
 
 int main() {
 	Parameters p;
-	Grids grids(p);
-	// Bellman model(p, grids);
+	Grids grids;
+	Bellman model(p, grids);
 
 	
 

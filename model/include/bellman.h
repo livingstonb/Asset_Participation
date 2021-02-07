@@ -17,10 +17,14 @@ class BellmanImpl;
 
 class Bellman {
 	private:
-		std::unique_ptr<BellmanImpl> impl;
+		BellmanImpl* impl = nullptr;
 
 	public:
 		Bellman(const Parameters& p, const Grids& grids);
+
+		~Bellman();
+
+		void solve();
 };
 
 // double value(const arma::vec& z, arma::vec* grad, void* args) {

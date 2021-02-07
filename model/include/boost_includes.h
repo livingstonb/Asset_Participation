@@ -1,7 +1,7 @@
 #ifndef BOOST_INCLUDES
 #define BOOST_INCLUDES
 
-#include <boost/multiarray.hpp>
+#include <boost/multi_array.hpp>
 
 using arr3d = boost::multi_array<double, 3>;
 

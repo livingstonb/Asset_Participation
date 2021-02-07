@@ -10,7 +10,7 @@ template<typename T, typename V>
 double linterp1(const T& grid, const V& values, int n, double x)
 {
 	int iv = lookup1d(grid, n, x);
-	double wt = (grid[iv] - x) / (grid[iv] - grid[iv-1];
+	double wt = (grid[iv] - x) / (grid[iv] - grid[iv-1]);
 
 	wt = fmax(fmin(wt, 1), 0);
 
@@ -21,7 +21,7 @@ double linterp1(const T& grid, const V& values, int n, double x)
 
 template<typename T, typename V>
 double linterp2(const T& grid0, const T& grid1,
-	const V& values, int n0, int n1, double x0, double x1);
+	const V& values, int n0, int n1, double x0, double x1)
 {
 	int iv0 = lookup1d(grid0, n0, x0);
 	int iv1 = lookup1d(grid1, n1, x1);

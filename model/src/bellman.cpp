@@ -4,14 +4,19 @@
 #include <parameters.h>
 #include <grids.h>
 #include <functions.h>
+#include<memory>
 
 using BellmanPtr = std::unique_ptr<BellmanImpl>;
 
 namespace {
 	struct ObjArgs {
+		ObjArgs(const std::vector<double>& sfgrid_,
+			const std::vector<double>& segrid_)
+			: sfgrid(sfgrid_), segrid(segrid_) {}
+
 		double x, gam, phi1, phi2, Rb, beta;
 
-		arr3d::view<2> evalues;
+		std::shared_ptr<arr3d::array_view<2>::type> evalues = nullptr;
 
 		const std::vector<double>& sfgrid;
 
@@ -25,18 +30,18 @@ namespace {
 
 class BellmanImpl {
 	public:
-		BellmanImpl(const Parameters& p_, const Grids& grids)
+		BellmanImpl(const Parameters& p_, const Grids& grids_)
 			: p(p_), grids(grids_),
 				V(boost::extents[grids.nx][grids.nyP][grids.np]),
 				EV(boost::extents[grids.n_sf][grids.n_se][grids.nyP])
 		{
-			nx = nx;
-			n_sf = n_sf;
-			n_se = n_se;
-			n_re = n_re;
-			nyP = nyP;
-			nyT = nyT;
-			np = np;
+			nx = grids.nx;
+			n_sf = grids.n_sf;
+			n_se = grids.n_se;
+			n_re = grids.n_re;
+			nyP = grids.nyP;
+			nyT = grids.nyT;
+			np = grids.np;
 			xmax = grids.xmax;
 			curv = grids.curv;
 			t = p.T;
@@ -51,15 +56,14 @@ class BellmanImpl {
 		void solve_decisions(int ix, int iyP, int ip,
 			const ObjArgs& args);
 
+		double val_EV(double sf, double se, int iyP,
+			const std::vector<arr3d::array_view<1>::type>& vviews) const;
+
 		const Parameters& p;
 
 		const Grids& grids;
 
 		arr3d V, EV;
-
-		Income income;
-
-		Grids grids;
 
 		double xmax, curv;
 
@@ -85,36 +89,36 @@ void BellmanImpl::update_EV()
 	// sf : Amount invested in safe assets, after interest
 	// se : Amount invested in equity, before return
 
-	double sf, se, xp;
+	
 	// boost::array<arr3d::index, 3> shape = {{ nx, ny, np }};
 
-	std::vector<arr3d::view<1>> vviews(nyP * np);
+	std::vector<arr3d::array_view<1>::type> vviews;
+	vviews.reserve(nyP * np);
+
 	for (int iyP=0; iyP<nyP; ++iyP) {
 		for (int ip=0; ip<np; ++ip) {
-			vviews[iyP + nyP * ip] = V[ boost::indices[range()][iyP][ip] ];
+			vviews.push_back(V[ boost::indices[range()][iyP][ip] ]);
 		}
 	}
 
-	double evval;
-	double xp;
+	double sf, se, xp;
 
 	// Compute V' by interpolation
-	double vp[n_y];
 	for (int isf=0; isf<n_sf; ++isf) {
 		sf = grids.sf[isf];
 		for (int ise=0; ise<n_se; ++ise) {
 			se = grids.se[ise];
-			for (int iyP=0; iy<nyP; ++iyP) {
-				EV[isf][ise][iyP] = val_EV(sf, se, iyP);
+			for (int iyP=0; iyP<nyP; ++iyP) {
+				EV[isf][ise][iyP] = val_EV(sf, se, iyP, vviews);
 			}
 		}
 	}
 }
 
 double BellmanImpl::val_EV(double sf, double se, int iyP,
-	const std::vector<arr3d::view<1>>& vviews) const
+	const std::vector<arr3d::array_view<1>::type>& vviews) const
 {
-	double ev = 0.0;
+	double xp, ev = 0.0;
 
 	for (int iyT=0; iyT<nyT; ++iyT) {
 		for (int ie=0; ie<n_re; ++ie) {
@@ -124,7 +128,7 @@ double BellmanImpl::val_EV(double sf, double se, int iyP,
 					ev +=
 						grids.lpref_dist[ip] * grids.Re_dist[ie]
 						* grids.yP_trans[iyP + nyP * iyP2] * grids.yT_dist[iyT]
-						* linterp1(grids.x, vviews[iyP2 + nyP * ip, nx, xp);
+						* linterp1(grids.x, vviews[iyP2 + nyP * ip], nx, xp);
 				}
 			}
 		}
@@ -134,18 +138,21 @@ double BellmanImpl::val_EV(double sf, double se, int iyP,
 
 void BellmanImpl::compute_value_t()
 {
-	ObjArgs args;
+	ObjArgs args(grids.sf, grids.se);
 	args.gam = p.gam;
 	args.phi1 = p.phi1;
 	args.phi2 = p.phi2;
 	args.Rb = p.Rb;
 	args.beta = p.beta;
 
+	arr3d::index_gen indices;
+
 	for (int ix=0; ix<nx; ++ix) {
 		args.x = grids.x[ix];
 		for (int iyP=0; iyP<nyP; ++iyP) {
-			auto idx = boost::indices[range()][range()][iyP];
-			arg->values = EV[idx];
+			auto idx = indices[range()][range()][iyP];
+			arr3d::array_view<2>::type ev = EV[idx];
+			args.evalues.reset(&ev);
 			for (int ip=0; ip<np; ++ip) {
 				solve_decisions(ix, iyP, ip, args);
 			}
@@ -170,33 +177,31 @@ void BellmanImpl::solve_decisions(int ix, int iyP,
 
 	// q_e
 	z0[2] = 0.3;
-
-	for (int isf=0; isf<n_sf; ++isf) {
-		sf = grids.sf[isf];
-		for (int ise=0; ise<n_se; ++ise) {
-			se = grids.se[ise];
-		}
-	}
 }
 
 Bellman::Bellman(const Parameters& p, const Grids& grids)
 {
-	impl.reset(new BellmanImpl(p, grids));
+	impl = new BellmanImpl(p, grids);
+}
+
+Bellman::~Bellman()
+{
+	delete[] impl;
 }
 
 void Bellman::solve()
 {
-	impl.compute_terminal_value();
+	impl->compute_terminal_value();
 
 	while (impl->t >= 0) {
-		impl.update_EV();
-		impl.compute_value_t();
+		impl->update_EV();
+		impl->compute_value_t();
 	}
 }
 
-void objective(z, void* args)
+double objective(double* z, void* vargs)
 {
-	const ObjArgs* args = (ObjArgs*) args;
+	const ObjArgs* args = (ObjArgs*) vargs;
 
 	double c, s, q_b, q_e;
 	s = z[0];
@@ -206,14 +211,14 @@ void objective(z, void* args)
 
 	double m, u, sf, se, ev;
 	m = (1.0-q_b-q_e) * s;
-	u = wrapper_cd_util(c, m, args);
+	u = wrapper_cd_util(c, m, *args);
 	sf = m + q_b * s * args->Rb;
 	se = q_e * s;
 
 	// auto idx = boost::indices[range()][range()][iyP];
 	// arr3d::view<2> values = impl->EV[idx];
 
-	ev = linterp2(args->sfgrid, args->segrid, args->values,
+	ev = linterp2(args->sfgrid, args->segrid, *(args->evalues),
 		args->n_sf, args->n_se, sf, se);
 
 	return u + args->beta * ev;
@@ -222,6 +227,6 @@ void objective(z, void* args)
 namespace {
 	double wrapper_cd_util(double c, double m, const ObjArgs& args)
 	{
-		return cd_util(c, m, args->gam, args->phi1, args->phi2);
+		return cd_util(c, m, args.gam, args.phi1, args.phi2);
 	}
 }
