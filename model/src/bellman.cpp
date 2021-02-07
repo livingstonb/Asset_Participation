@@ -241,23 +241,21 @@ void BellmanImpl::solve_decisions(int ix, int iyP,
 	double z0[3];
 	
 	// Evaluate corners
+	// NEED TO MAXIMIZE OVER REMAINING VARIABLES AT CORNER
 	z0[0] = 0.0;
 	z0[1] = 0.0;
 	z0[2] = 0.0;
 	val = value_fn(z0, (void*) &args);
 	results.set(val, z0);
 
+	z0[0] = 0.1;
 	z0[1] = 1.0;
+	z0[0] = 0.0;
 	val = value_fn(z0, (void*) &args);
 	if (val > results.v)
 		results.set(val, z0);
 
-	z0[1] = 0.0;
-	z0[2] = 1.0;
-	val = value_fn(z0, (void*) &args);
-	if (val > results.v)
-		results.set(val, z0);
-
+	z0[0] = 0.1;
 	z0[1] = 1.0;
 	z0[2] = 1.0;
 	val = value_fn(z0, (void*) &args);
