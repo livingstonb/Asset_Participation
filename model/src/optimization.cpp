@@ -35,7 +35,7 @@ bool lbfgs_wrapper(double* z, const optimlib_fn& obj_fn, void* args,
 	options.lower_bounds = arma::vec(lb, 3);
 	options.upper_bounds = arma::vec(ub, 3);
 
-	bool success = optim::lbfgs(ax, fn, args, options);
+	bool success = optim::nm(ax, fn, args, options);
 
 	z[0] = ax(0);
 	z[1] = ax(1);

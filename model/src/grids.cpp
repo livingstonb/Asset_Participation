@@ -9,11 +9,11 @@ namespace {
 
 Grids::Grids()
 {
+	create_income_dist();
+
 	create_saving_grids();
 
 	create_returns_dist();
-
-	create_income_dist();
 
 	create_pref_dist();
 }

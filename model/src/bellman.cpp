@@ -39,8 +39,8 @@ namespace {
 		void set(double v_, double* z) {
 			v = v_;
 			s = z[0];
-			q_b = z[1];
-			q_e = z[2];
+			q_b = z[1] * z[2];
+			q_e = z[1] * (1 - z[2]);
 		}
 
 		double v, s, c, q_b, q_e;
@@ -188,7 +188,7 @@ void BellmanImpl::compute_value_t()
 
 	for (int ix=0; ix<nx; ++ix) {
 		args.x = grids.x[ix];
-		args.lb[0] = args.x - 1.0e-9;
+		args.ub[0] = args.x - 1.0e-9;
 		for (int iyP=0; iyP<nyP; ++iyP) {
 			auto idx = indices[range()][range()][iyP];
 			arr3d::array_view<2>::type ev = EV[idx];
@@ -214,7 +214,20 @@ void BellmanImpl::compute_value_t()
 			policyfuns << q_e[ix][iyP][ip] << "\n";
 		}
 		policyfuns.close();
-		std::cout << "Policies written\n";
+
+		std::ofstream evs("output/EV.csv");
+		for (int ise=0; ise<n_se; ++ise)
+			evs << grids.se[ise] << ",";
+		evs << '\n';
+
+		for (int isf=0; isf<n_sf; ++isf) {
+			evs << grids.sf[isf] << ",";
+			for (int ise=0; ise<n_se; ++ise) {
+				evs << EV[isf][ise][iyP] << ",";
+			}
+			evs << '\n';
+		}
+		evs.close();
 	}
 	--t;
 }
@@ -253,8 +266,8 @@ void BellmanImpl::solve_decisions(int ix, int iyP,
 
 	// Look for interior solution
 	z0[0] = 0.5 * x; // s
-	z0[1] = 0.3; // q_b
-	z0[2] = 0.3; // q_e
+	z0[1] = 0.5; // q_b
+	z0[2] = 0.5; // q_e
 
 	const std::function<double(const double*, void*)>& objfn = value_fn;
 	bool success = lbfgs_wrapper(z0, objfn, (void*) &args, args.lb, args.ub);
@@ -303,8 +316,8 @@ namespace {
 
 		double c, s, q_b, q_e;
 		s = z[0];
-		q_b = z[1];
-		q_e = z[2];
+		q_b = z[1] * z[2];
+		q_e = z[1] * (1 - z[2]);
 		c = args->x - s;
 
 		double m, u, sf, se, ev;

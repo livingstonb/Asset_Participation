@@ -6,13 +6,13 @@ class Parameters {
 		int T = 10;
 
 		// Coeff of relative risk aversion
-		double gam = 1.5;
+		double gam = 1.1;
 
 		// Liquidity preference coeffs
 		double phi1 = 0.2;
 		double phi2 = 0.5;
 
-		double beta = 0.95;
+		double beta = 0.98;
 		double sgridcurv = 0.2;
 
 		double Rb = 1.005;

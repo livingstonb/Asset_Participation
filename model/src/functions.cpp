@@ -16,7 +16,7 @@ double cd_util(double c, double m, double gam, double phi1, double phi2)
 	else
 		u = pow(c, 1.0 - gam) / (1.0 - gam);
 	
-	v = pow(m, 1.0 + phi2) / (1.0 + phi2);
+	v = pow(m + 0.1, 1.0 + phi2) / (1.0 + phi2);
 
 	return u + phi1 * v;
 }
