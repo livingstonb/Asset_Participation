@@ -4,7 +4,9 @@
 #include <parameters.h>
 #include <grids.h>
 #include <functions.h>
-#include<memory>
+#include <optimization.h>
+
+#include <memory>
 
 namespace {
 	struct ObjArgs {
@@ -24,6 +26,8 @@ namespace {
 	};
 
 	double wrapper_cd_util(double c, double m, const ObjArgs& args);
+
+	double objective(const double* z, void* vargs);
 }
 
 class BellmanImpl {
@@ -99,7 +103,7 @@ void BellmanImpl::update_EV()
 		}
 	}
 
-	double sf, se, xp;
+	double sf, se;
 
 	// Compute V' by interpolation
 	for (int isf=0; isf<n_sf; ++isf) {
@@ -175,6 +179,9 @@ void BellmanImpl::solve_decisions(int ix, int iyP,
 
 	// q_e
 	z0[2] = 0.3;
+
+	const std::function<double(const double*, void*)>& objfn = objective;
+	bool success = lbfgs_wrapper(z0, objfn, (void*) &args);
 }
 
 Bellman::Bellman(const Parameters& p, const Grids& grids)
@@ -197,34 +204,34 @@ void Bellman::solve()
 	}
 }
 
-double objective(double* z, void* vargs)
-{
-	const ObjArgs* args = (ObjArgs*) vargs;
-
-	double c, s, q_b, q_e;
-	s = z[0];
-	q_b = z[1];
-	q_e = z[2];
-	c = args->x - s;
-
-	double m, u, sf, se, ev;
-	m = (1.0-q_b-q_e) * s;
-	u = wrapper_cd_util(c, m, *args);
-	sf = m + q_b * s * args->Rb;
-	se = q_e * s;
-
-	// auto idx = boost::indices[range()][range()][iyP];
-	// arr3d::view<2> values = impl->EV[idx];
-
-	ev = linterp2(args->sfgrid, args->segrid, *(args->evalues),
-		args->n_sf, args->n_se, sf, se);
-
-	return u + args->beta * ev;
-}
-
 namespace {
 	double wrapper_cd_util(double c, double m, const ObjArgs& args)
 	{
 		return cd_util(c, m, args.gam, args.phi1, args.phi2);
+	}
+
+	double objective(const double* z, void* vargs)
+	{
+		const ObjArgs* args = (ObjArgs*) vargs;
+
+		double c, s, q_b, q_e;
+		s = z[0];
+		q_b = z[1];
+		q_e = z[2];
+		c = args->x - s;
+
+		double m, u, sf, se, ev;
+		m = (1.0-q_b-q_e) * s;
+		u = wrapper_cd_util(c, m, *args);
+		sf = m + q_b * s * args->Rb;
+		se = q_e * s;
+
+		// auto idx = boost::indices[range()][range()][iyP];
+		// arr3d::view<2> values = impl->EV[idx];
+
+		ev = linterp2(args->sfgrid, args->segrid, *(args->evalues),
+			args->n_sf, args->n_se, sf, se);
+
+		return u + args->beta * ev;
 	}
 }

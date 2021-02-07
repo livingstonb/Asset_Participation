@@ -1,6 +1,8 @@
 #ifndef OPTIMIZATION_HEADER
 #define OPTIMIZATION_HEADER
 
+#include <functional>
+
 // void optimize(const double* vals_inp, int n);
 
 // template<typename T>
@@ -14,6 +16,10 @@
 // 	optimize(arr, n);
 // 	delete[] arr;
 // }
+
+using optimlib_fn = std::function<double(const double*, void*)>;
+
+bool lbfgs_wrapper(double* z, const optimlib_fn& test_fn, void* args);
 
 bool test_opt(const double*, int n);
 

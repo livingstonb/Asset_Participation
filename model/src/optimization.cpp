@@ -3,6 +3,30 @@
 #include <optim.hpp>
 #include <cmath>
 
+
+
+bool lbfgs_wrapper(double* z, const optimlib_fn& obj_fn, void* args)
+{
+	arma::vec ax(3, 1);
+	ax(0) = z[0];
+	ax(1) = z[1];
+	ax(2) = z[2];
+
+	std::function<double(const arma::vec&, arma::vec*, void*)>
+		fn = [&](const arma::vec& data, arma::vec* grad, void* opts)
+		{
+			double y = obj_fn(data.memptr(), opts);
+			return y;
+		};
+
+	bool success = optim::lbfgs(ax, fn, args);
+
+	z[0] = ax(0);
+	z[1] = ax(1);
+	z[2] = ax(2);
+	return success;
+}
+
 double test_fn(const arma::vec& x, arma::vec* grad_out, void* opt_data)
 {
 	return fabs(x(0) - 0.15) + fabs(x(1) + 0.234);

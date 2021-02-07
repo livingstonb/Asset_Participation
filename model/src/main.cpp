@@ -11,6 +11,8 @@ int main() {
 	Grids grids;
 	Bellman model(p, grids);
 
+	model.solve();
+
 	
 
 	return 0;

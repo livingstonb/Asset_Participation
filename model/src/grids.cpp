@@ -20,6 +20,7 @@ Grids::Grids()
 
 void Grids::create_saving_grids()
 {
+	x = curved_grid(0.0, xmax, nx, curv);
 	sf = curved_grid(0.0, xmax, n_sf, curv);
 	se = curved_grid(0.0, xmax, n_se, curv);
 }
