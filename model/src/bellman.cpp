@@ -6,8 +6,6 @@
 #include <functions.h>
 #include<memory>
 
-using BellmanPtr = std::unique_ptr<BellmanImpl>;
-
 namespace {
 	struct ObjArgs {
 		ObjArgs(const std::vector<double>& sfgrid_,
@@ -186,7 +184,7 @@ Bellman::Bellman(const Parameters& p, const Grids& grids)
 
 Bellman::~Bellman()
 {
-	delete[] impl;
+	delete impl;
 }
 
 void Bellman::solve()
