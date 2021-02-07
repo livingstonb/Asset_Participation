@@ -17,14 +17,14 @@ class Grids {
 
 		void create_pref_dist();
 
-		int n_sf = 50;
-		int n_se = 50;
+		int n_sf = 100;
+		int n_se = 100;
 		int n_re = 5;
 		int nyP = 2;
 		int nyT = 1;
 		int np = 1;
 
-		int nx = 50;
+		int nx = 100;
 		double xmax = 200;
 		double curv = 0.2;
 		double ymin;

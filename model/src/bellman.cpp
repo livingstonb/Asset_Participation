@@ -7,7 +7,7 @@
 #include <optimization.h>
 #include <iostream>
 #include <fstream>
-
+#include <functional>
 #include <memory>
 
 namespace {
@@ -48,17 +48,7 @@ namespace {
 
 	double wrapper_cd_util(double c, double m, const ObjArgs& args);
 
-	double value_fn_b_only(const double* z, void* vargs);
-
-	double value_fn_s_only(const double* z, void* vargs);
-
-	// double value_fn_b_s_only(const double* z, void* vargs);
-
-	// double value_fn_m_b_only(const double* z, void* vargs);
-
-	// double value_fn_m_s_only(const double* z, void* vargs);
-
-	double value_fn_interior(const double* z, void* vargs);
+	double value_fn(const double* z, void* vargs, bool m0, bool b0, bool e0);
 }
 
 class BellmanImpl {
@@ -131,9 +121,8 @@ void BellmanImpl::update_EV()
 
 	std::vector<arr3d::array_view<1>::type> vviews;
 	vviews.reserve(nyP * np);
-
-	for (int iyP=0; iyP<nyP; ++iyP) {
-		for (int ip=0; ip<np; ++ip) {
+	for (int ip=0; ip<np; ++ip) {
+		for (int iyP=0; iyP<nyP; ++iyP) {
 			vviews.push_back(V[ boost::indices[range()][iyP][ip] ]);
 		}
 	}
@@ -184,15 +173,15 @@ void BellmanImpl::compute_value_t()
 	args.xmax = grids.xmax;
 
 	// s
-	args.lb[0] = 0.0;
+	args.lb[0] = 1.0e-9;
 
 	// share invested
-	args.lb[1] = 0.0;
-	args.ub[1] = 1.0;
+	args.lb[1] = 1.0e-9;
+	args.ub[1] = 1.0 - 1.0e-9;
 
 	// equity share of investments
-	args.lb[2] = 0.0;
-	args.ub[2] = 1.0;
+	args.lb[2] = 1.0e-9;
+	args.ub[2] = 1.0 - 1.0e-9;
 
 	arr3d::index_gen indices;
 
@@ -209,7 +198,7 @@ void BellmanImpl::compute_value_t()
 		}
 	}
 
-	if (t == p.T - 5) {
+	if (t == p.T - 8) {
 		std::ofstream policyfuns("output/policies.csv");
 		policyfuns << "V, x, s, c, q_b, q_e\n";
 
@@ -249,24 +238,28 @@ void BellmanImpl::solve_decisions(int ix, int iyP,
 	double val, x = grids.x[ix];
 	double lprefshock = grids.lpref[ip];
 	double z3[3];
+	double z2[2];
+	double lb2[2];
+	double ub2[2];
 	double z1, lb, ub;
 	bool success;
 	
-	// Evaluate corners
-	// NEED TO MAXIMIZE OVER REMAINING VARIABLES AT CORNER
-
 	// No saving
-	z3[0] = 0.0;
-	z3[1] = 0.0;
-	z3[2] = 0.0;
-	val = value_fn_interior(z3, (void*) &args);
-	results.set(val, z3);
+	z1 = 0;
+	val = value_fn(&z1, (void*) &args, true, true, true);
+	results.v = val;
+	results.s = z1;
+	results.q_b = 0;
+	results.q_e = 0;
 
 	// Saving in bonds only, maximize over s
 	lb = 1.0e-9;
 	ub = x - 1.0e-9;
-	z1 = 0.5 * x;
-	const std::function<double(const double*, void*)>& objfn_b_only = value_fn_b_only;
+	z1 = 0.5 * ub;
+	const std::function<double(const double*, void*)>& objfn_b_only
+		= [&](const double* zz, void* aargs) {
+			return value_fn(zz, aargs, true, false, true);
+		};
 	success = lbfgs_wrapper(&z1, objfn_b_only, (void*) &args, &lb, &ub, 1);
 	val = objfn_b_only(&z1, (void*) &args);
 	if ( (val > results.v) & success ) {
@@ -279,8 +272,11 @@ void BellmanImpl::solve_decisions(int ix, int iyP,
 	// Saving in stocks only, maximize over s
 	lb = 1.0e-9;
 	ub = x - 1.0e-9;
-	z1 = 0.5 * x;
-	const std::function<double(const double*, void*)>& objfn_s_only = value_fn_s_only;
+	z1 = 0.5 * ub;
+	const std::function<double(const double*, void*)>& objfn_s_only
+		= [&](const double* zz, void* aargs) {
+			return value_fn(zz, aargs, true, true, false);
+		};
 	success = lbfgs_wrapper(&z1, objfn_s_only, (void*) &args, &lb, &ub, 1);
 	val = objfn_s_only(&z1, (void*) &args);
 	if ( (val > results.v) & success ) {
@@ -290,12 +286,92 @@ void BellmanImpl::solve_decisions(int ix, int iyP,
 		results.q_e = 1;
 	}
 
-	// Look for interior solution
-	z3[0] = 0.5 * x; // s
-	z3[1] = 0.5; // q_b
-	z3[2] = 0.5; // q_e
+	// Saving in money only, maximize over s
+	lb = 1.0e-9;
+	ub = x - 1.0e-9;
+	z1 = 0.5 * ub;
+	const std::function<double(const double*, void*)>& objfn_m_only
+		= [&](const double* zz, void* aargs) {
+			return value_fn(zz, aargs, false, true, true);
+		};
+	success = lbfgs_wrapper(&z1, objfn_m_only, (void*) &args, &lb, &ub, 1);
+	val = objfn_m_only(&z1, (void*) &args);
+	if ( (val > results.v) & success ) {
+		results.v = val;
+		results.s = z1;
+		results.q_b = 0;
+		results.q_e = 0;
+	}
 
-	const std::function<double(const double*, void*)>& objfn_interior = value_fn_interior;
+	// Saving in money & bonds, maximize over s, b
+	lb2[0] = 1.0e-9;
+	lb2[1] = 1.0e-9;
+	ub2[0] = x - 1.0e-9;
+	ub2[1] = 1.0 - 1.0e-9;
+	z2[0] = 0.5 * ub2[0];
+	z2[1] = 0.5;
+	const std::function<double(const double*, void*)>& objfn_m_b_only
+		= [&](const double* zz, void* aargs) {
+			return value_fn(zz, aargs, false, false, true);
+		};
+	success = lbfgs_wrapper(z2, objfn_m_b_only, (void*) &args, lb2, ub2, 2);
+	val = objfn_m_b_only(z2, (void*) &args);
+	if ( (val > results.v) & success ) {
+		results.v = val;
+		results.s = z2[0];
+		results.q_b = z2[1];
+		results.q_e = 0;
+	}
+
+	// Saving in money & stocks, maximize over s, q_e
+	lb2[0] = 1.0e-9;
+	lb2[1] = 1.0e-9;
+	ub2[0] = x - 1.0e-9;
+	ub2[1] = 1.0 - 1.0e-9;
+	z2[0] = 0.5 * ub2[0];
+	z2[1] = 0.5;
+	const std::function<double(const double*, void*)>& objfn_m_s_only
+		= [&](const double* zz, void* aargs) {
+			return value_fn(zz, aargs, false, true, false);
+		};
+	success = lbfgs_wrapper(z2, objfn_m_s_only, (void*) &args, lb2, ub2, 2);
+	val = objfn_m_s_only(z2, (void*) &args);
+	if ( (val > results.v) & success ) {
+		results.v = val;
+		results.s = z2[0];
+		results.q_b = 0;
+		results.q_e = z2[1];
+	}
+
+	// Saving in bonds & stocks, maximize over s, q_b
+	lb2[0] = 1.0e-9;
+	lb2[1] = 1.0e-9;
+	ub2[0] = x - 1.0e-9;
+	ub2[1] = 1.0 - 1.0e-9;
+	z2[0] = 0.5 * ub2[0];
+	z2[1] = 0.5;
+	const std::function<double(const double*, void*)>& objfn_b_s_only
+		= [&](const double* zz, void* aargs) {
+			return value_fn(zz, aargs, true, false, false);
+		};
+	success = lbfgs_wrapper(z2, objfn_b_s_only, (void*) &args, lb2, ub2, 2);
+	val = objfn_b_s_only(z2, (void*) &args);
+	if ( (val > results.v) & success ) {
+		results.v = val;
+		results.s = z2[0];
+		results.q_b = z2[1];
+		results.q_e = 1.0 - z2[1];
+	}
+
+	// Look for interior solution
+	z3[0] = 0.5 * x;
+	z3[1] = 0.5;
+	z3[2] = 0.5;
+
+	const std::function<double(const double*, void*)>& objfn_interior
+		= [&](const double* zz, void* aargs) {
+			return value_fn(zz, aargs, false, true, false);
+		};
 	success = lbfgs_wrapper(z3, objfn_interior, (void*) &args, args.lb, args.ub, 3);
 	val = objfn_interior(z3, (void*) &args);
 	if ( (val > results.v) & success )
@@ -336,66 +412,45 @@ namespace {
 		return cd_util(c, m, args.gam, args.phi1, args.phi2);
 	}
 
-	double value_fn_b_only(const double* z, void* vargs)
-	{
-		const ObjArgs* args = (ObjArgs*) vargs;
-
-		double c, s, q_b;
-		s = z[0];
-		q_b = 1;
-		c = args->x - s;
-
-		double m, u, sf, se, ev;
-		m = 0;
-		u = wrapper_cd_util(c, m, *args);
-		sf = s * args->Rb;
-		se = 0;
-
-		ev = linterp2(args->sfgrid, args->segrid, *(args->evalues),
-			args->n_sf, args->n_se, sf, se);
-
-		return u + args->beta * ev;
-	}
-
-	double value_fn_s_only(const double* z, void* vargs)
-	{
-		const ObjArgs* args = (ObjArgs*) vargs;
-
-		double c, s, q_e;
-		s = z[0];
-		q_e = 1;
-		c = args->x - s;
-
-		double m, u, sf, se, ev;
-		m = 0;
-		u = wrapper_cd_util(c, m, *args);
-		sf = 0;
-		se = s;
-
-		ev = linterp2(args->sfgrid, args->segrid, *(args->evalues),
-			args->n_sf, args->n_se, sf, se);
-
-		return u + args->beta * ev;
-	}
-
-	double value_fn_interior(const double* z, void* vargs)
+	double value_fn(const double* z, void* vargs, bool m0, bool b0, bool e0)
 	{
 		const ObjArgs* args = (ObjArgs*) vargs;
 
 		double c, s, q_b, q_e;
+
 		s = z[0];
-		q_b = z[1] * z[2];
-		q_e = z[1] * (1 - z[2]);
+
+		if ( m0 )
+			s = 0;
+
+		if ( b0 & e0 ) {
+			q_b = 0;
+			q_e = 0;
+		}
+		else if ( b0 ) {
+			q_b = 0;
+			q_e = z[1];
+		}
+		else if ( e0 ) {
+			q_e = 0;
+			q_b = z[1];
+		}
+		else if ( m0 ) {
+			q_b = z[1];
+			q_e = 1.0 - q_b;
+		}
+		else {
+			q_b = z[1] * z[2];
+			q_e = z[1] * (1.0 - z[2]);
+		}
+
 		c = args->x - s;
 
 		double m, u, sf, se, ev;
-		m = (1.0-q_b-q_e) * s;
+		m = (1.0 - q_b - q_e) * s;
 		u = wrapper_cd_util(c, m, *args);
 		sf = m + q_b * s * args->Rb;
 		se = q_e * s;
-
-		// auto idx = boost::indices[range()][range()][iyP];
-		// arr3d::view<2> values = impl->EV[idx];
 
 		ev = linterp2(args->sfgrid, args->segrid, *(args->evalues),
 			args->n_sf, args->n_se, sf, se);

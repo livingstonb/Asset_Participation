@@ -28,7 +28,7 @@ void Grids::create_saving_grids()
 void Grids::create_returns_dist()
 {
 	// Re.resize(n_re);
-	Re = {1.0, 1.014};
+	Re = {1.001, 1.014};
 
 	// Re_dist.resize(n_re);
 	Re_dist = {0.5, 0.5};
@@ -51,14 +51,14 @@ void Grids::create_income_dist()
 	// yT_dist = RVector(nyT);
 	yT_dist = {1.0};
 
-	y_dist.reserve(nyP * nyT);
-	y.reserve(nyP * nyT);
+	y_dist.resize(nyP * nyT);
+	y.resize(nyP * nyT);
 	double meany = 0;
 	for (int iyP=0; iyP<nyP; ++iyP) {
 		for (int iyT=0; iyT<nyT; ++iyT) {
-			y_dist.push_back(yP_dist[iyP] * yT_dist[iyT]);
-			y.push_back(yP[iyP] * yT[iyT]);
-			meany += yP[iyP] * yT[iyT] / (yP_dist[iyP] * yT_dist[iyT]);
+			y_dist[iyP + nyP * iyT] = yP_dist[iyP] * yT_dist[iyT];
+			y[iyP + nyP * iyT] = yP[iyP] * yT[iyT];
+			meany += yP[iyP] * yT[iyT] * yP_dist[iyP] * yT_dist[iyT];
 		}
 	}
 
