@@ -9,11 +9,11 @@ class Grids {
 	public:
 		Grids();
 
+		void create_income_dist();
+
 		void create_saving_grids();
 
 		void create_returns_dist();
-
-		void create_income_dist();
 
 		void create_pref_dist();
 
@@ -27,6 +27,7 @@ class Grids {
 		int nx = 50;
 		double xmax = 200;
 		double curv = 0.2;
+		double ymin;
 
 		std::vector<double> x, se, sf, Re, Re_dist, yP, yP_dist, y_dist;
 

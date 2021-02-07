@@ -20,7 +20,7 @@ Grids::Grids()
 
 void Grids::create_saving_grids()
 {
-	x = curved_grid(0.0, xmax, nx, curv);
+	x = curved_grid(ymin, xmax, nx, curv);
 	sf = curved_grid(0.0, xmax, n_sf, curv);
 	se = curved_grid(0.0, xmax, n_se, curv);
 }
@@ -58,7 +58,7 @@ void Grids::create_income_dist()
 		for (int iyT=0; iyT<nyT; ++iyT) {
 			y_dist.push_back(yP_dist[iyP] * yT_dist[iyT]);
 			y.push_back(yP[iyP] * yT[iyT]);
-			meany += yP[iyP] * yT[iyT] / (nyP * nyT);
+			meany += yP[iyP] * yT[iyT] / (yP_dist[iyP] * yT_dist[iyT]);
 		}
 	}
 
@@ -67,6 +67,8 @@ void Grids::create_income_dist()
 
 	for (auto& yTval : yT)
 		yTval /= meany;
+
+	ymin = yP[0] * yT[0];
 }
 
 void Grids::create_pref_dist()

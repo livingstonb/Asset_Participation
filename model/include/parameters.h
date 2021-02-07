@@ -6,7 +6,7 @@ class Parameters {
 		int T = 10;
 
 		// Coeff of relative risk aversion
-		double gam = 1.0;
+		double gam = 1.5;
 
 		// Liquidity preference coeffs
 		double phi1 = 0.2;

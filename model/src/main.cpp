@@ -5,6 +5,7 @@
 #include <Parameters.h>
 #include <Grids.h>
 #include <Bellman.h>
+#include <functions.h>
 
 int main() {
 	Parameters p;
@@ -13,7 +14,7 @@ int main() {
 
 	model.solve();
 
-	
+	print_vec(grids.y);
 
 	return 0;
 }

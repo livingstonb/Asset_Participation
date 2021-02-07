@@ -5,6 +5,8 @@
 #include <grids.h>
 #include <functions.h>
 #include <optimization.h>
+#include <iostream>
+#include <fstream>
 
 #include <memory>
 
@@ -18,7 +20,7 @@ namespace {
 			n_se = segrid.size();
 		}
 
-		double x, gam, phi1, phi2, Rb, beta;
+		double x, gam, phi1, phi2, Rb, beta, xmax;
 
 		arr3d::array_view<2>::type* evalues = nullptr;
 
@@ -27,11 +29,26 @@ namespace {
 		const std::vector<double>& segrid;
 
 		int n_sf, n_se;
+
+		double lb[3];
+
+		double ub[3];
+	};
+
+	struct OptResults {
+		void set(double v_, double* z) {
+			v = v_;
+			s = z[0];
+			q_b = z[1];
+			q_e = z[2];
+		}
+
+		double v, s, c, q_b, q_e;
 	};
 
 	double wrapper_cd_util(double c, double m, const ObjArgs& args);
 
-	double objective(const double* z, void* vargs);
+	double value_fn(const double* z, void* vargs);
 }
 
 class BellmanImpl {
@@ -154,11 +171,24 @@ void BellmanImpl::compute_value_t()
 	args.phi2 = p.phi2;
 	args.Rb = p.Rb;
 	args.beta = p.beta;
+	args.xmax = grids.xmax;
+
+	// s
+	args.lb[0] = 0.0;
+
+	// share invested
+	args.lb[1] = 0.0;
+	args.ub[1] = 1.0;
+
+	// equity share of investments
+	args.lb[2] = 0.0;
+	args.ub[2] = 1.0;
 
 	arr3d::index_gen indices;
 
 	for (int ix=0; ix<nx; ++ix) {
 		args.x = grids.x[ix];
+		args.lb[0] = args.x - 1.0e-9;
 		for (int iyP=0; iyP<nyP; ++iyP) {
 			auto idx = indices[range()][range()][iyP];
 			arr3d::array_view<2>::type ev = EV[idx];
@@ -168,34 +198,75 @@ void BellmanImpl::compute_value_t()
 			}
 		}
 	}
+
+	if (t == p.T - 5) {
+		std::ofstream policyfuns("output/policies.csv");
+		policyfuns << "V, x, s, c, q_b, q_e\n";
+
+		int iyP = 1;
+		int ip = 0;
+		for (int ix=0; ix<nx; ++ix) {
+			policyfuns << V[ix][iyP][ip] << ",";
+			policyfuns << grids.x[ix] << ",";
+			policyfuns	<< s[ix][iyP][ip] << ",";
+			policyfuns << c[ix][iyP][ip] << ",";
+			policyfuns	<< q_b[ix][iyP][ip] << ",";
+			policyfuns << q_e[ix][iyP][ip] << "\n";
+		}
+		policyfuns.close();
+		std::cout << "Policies written\n";
+	}
 	--t;
 }
 
 void BellmanImpl::solve_decisions(int ix, int iyP,
 	int ip, const ObjArgs& args)
 {
-	double x = grids.x[ix];
+	OptResults results;
+	double val, x = grids.x[ix];
 	double lprefshock = grids.lpref[ip];
-
 	double z0[3];
+	
+	// Evaluate corners
+	z0[0] = 0.0;
+	z0[1] = 0.0;
+	z0[2] = 0.0;
+	val = value_fn(z0, (void*) &args);
+	results.set(val, z0);
 
-	// s
-	z0[0] = 0.5 * x;
+	z0[1] = 1.0;
+	val = value_fn(z0, (void*) &args);
+	if (val > results.v)
+		results.set(val, z0);
 
-	// q_b
-	z0[1] = 0.3;
+	z0[1] = 0.0;
+	z0[2] = 1.0;
+	val = value_fn(z0, (void*) &args);
+	if (val > results.v)
+		results.set(val, z0);
 
-	// q_e
-	z0[2] = 0.3;
+	z0[1] = 1.0;
+	z0[2] = 1.0;
+	val = value_fn(z0, (void*) &args);
+	if (val > results.v)
+		results.set(val, z0);
 
-	const std::function<double(const double*, void*)>& objfn = objective;
-	bool success = lbfgs_wrapper(z0, objfn, (void*) &args);
+	// Look for interior solution
+	z0[0] = 0.5 * x; // s
+	z0[1] = 0.3; // q_b
+	z0[2] = 0.3; // q_e
 
-	s[ix][iyP][ip] = z0[0];
-	c[ix][iyP][ip] = x - z0[0];
-	q_b[ix][iyP][ip] = z0[1];
-	q_e[ix][iyP][ip] = z0[2];
-	V[ix][iyP][ip] = -objfn(z0, (void*) &args);
+	const std::function<double(const double*, void*)>& objfn = value_fn;
+	bool success = lbfgs_wrapper(z0, objfn, (void*) &args, args.lb, args.ub);
+	val = value_fn(z0, (void*) &args);
+	if ( (val > results.v) & success )
+		results.set(val, z0);
+
+	s[ix][iyP][ip] = results.s;
+	c[ix][iyP][ip] = x - results.s;
+	q_b[ix][iyP][ip] = results.q_b;
+	q_e[ix][iyP][ip] = results.q_e;
+	V[ix][iyP][ip] = value_fn(z0, (void*) &args);
 }
 
 Bellman::Bellman(const Parameters& p, const Grids& grids)
@@ -210,10 +281,12 @@ Bellman::~Bellman()
 
 void Bellman::solve()
 {
+	std::cout << "Solving terminal period.\n";
 	impl->compute_terminal_value();
 
 	while (impl->t >= 0) {
 		impl->update_EV();
+		std::cout << "Solving period " << impl->t << "\n";
 		impl->compute_value_t();
 	}
 }
@@ -224,7 +297,7 @@ namespace {
 		return cd_util(c, m, args.gam, args.phi1, args.phi2);
 	}
 
-	double objective(const double* z, void* vargs)
+	double value_fn(const double* z, void* vargs)
 	{
 		const ObjArgs* args = (ObjArgs*) vargs;
 
@@ -246,6 +319,6 @@ namespace {
 		ev = linterp2(args->sfgrid, args->segrid, *(args->evalues),
 			args->n_sf, args->n_se, sf, se);
 
-		return -(u + args->beta * ev);
+		return u + args->beta * ev;
 	}
 }
