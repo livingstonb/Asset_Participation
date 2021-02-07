@@ -7,6 +7,17 @@ namespace {
 		int n, double curv);
 }
 
+Grids::Grids()
+{
+	create_saving_grids();
+
+	create_returns_dist();
+
+	create_income_dist();
+
+	create_pref_dist();
+}
+
 void Grids::create_saving_grids()
 {
 	sf = curved_grid(0.0, xmax, n_sf, curv);

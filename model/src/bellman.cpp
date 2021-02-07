@@ -25,12 +25,21 @@ namespace {
 
 class BellmanImpl {
 	public:
-		BellmanImpl(const Parameters& p_)
+		BellmanImpl(const Parameters& p_, const Grids& grids)
 			: p(p_), grids(grids_),
-				V(boost::extents[p_.nx][p_.nyP][p_.np]),
-				EV(boost::extents[p_.n_sf][p_.n_se][p_.nyP])
+				V(boost::extents[grids.nx][grids.nyP][grids.np]),
+				EV(boost::extents[grids.n_sf][grids.n_se][grids.nyP])
 		{
-			t = p->T;
+			nx = nx;
+			n_sf = n_sf;
+			n_se = n_se;
+			n_re = n_re;
+			nyP = nyP;
+			nyT = nyT;
+			np = np;
+			xmax = grids.xmax;
+			curv = grids.curv;
+			t = p.T;
 		}
 
 		void compute_terminal_value();
@@ -52,14 +61,16 @@ class BellmanImpl {
 
 		Grids grids;
 
-		int t;
+		double xmax, curv;
+
+		int t, nx, n_sf, n_se, n_re, nyP, nyT, np;
 };
 
 void BellmanImpl::compute_terminal_value()
 {
-	for (int ix=0; ix<p.nx; ++ix) {
-		for (int iyP=0; iyP<p.nyP; ++iyP) {
-			for (int ip=0; ip<p.np; ++ip) {
+	for (int ix=0; ix<nx; ++ix) {
+		for (int iyP=0; iyP<nyP; ++iyP) {
+			for (int ip=0; ip<np; ++ip) {
 				V[ix][iyP][ip] = pow(grids.x[ix], 1.0 - p.gam);
 			}
 		}
@@ -75,19 +86,12 @@ void BellmanImpl::update_EV()
 	// se : Amount invested in equity, before return
 
 	double sf, se, xp;
-	int n_sf, n_se, n_re, nyP, np;
-	n_sf = p.n_sf;
-	n_se = p.n_se;
-	n_re = p.n_re;
-	nyP = p.nyP;
-	np = p.np;
+	// boost::array<arr3d::index, 3> shape = {{ nx, ny, np }};
 
-	// boost::array<arr3d::index, 3> shape = {{ p.nx, ny, np }};
-
-	std::vector<arr3d::view<1>> vviews(p.nyP * p.np);
-	for (int iyP=0; iyP<p.nyP; ++iyP) {
-		for (int ip=0; ip<p.np; ++ip) {
-			vviews[iyP + p.nyP * ip] = V[ boost::indices[range()][iyP][ip] ];
+	std::vector<arr3d::view<1>> vviews(nyP * np);
+	for (int iyP=0; iyP<nyP; ++iyP) {
+		for (int ip=0; ip<np; ++ip) {
+			vviews[iyP + nyP * ip] = V[ boost::indices[range()][iyP][ip] ];
 		}
 	}
 
@@ -112,15 +116,15 @@ double BellmanImpl::val_EV(double sf, double se, int iyP,
 {
 	double ev = 0.0;
 
-	for (int iyT=0; iyT<p.nyT; ++iyT) {
-		for (int ie=0; ie<p.n_re; ++ie) {
-			xp = sf + se * grids.Re[ie] + grids.y[iyP + p.nyP * iyT];
-			for (int ip=0; ip<p.np; ++ip) {
-				for (int iyP2=0; iyP2<p.nyP; ++iyP2) {
+	for (int iyT=0; iyT<nyT; ++iyT) {
+		for (int ie=0; ie<n_re; ++ie) {
+			xp = sf + se * grids.Re[ie] + grids.y[iyP + nyP * iyT];
+			for (int ip=0; ip<np; ++ip) {
+				for (int iyP2=0; iyP2<nyP; ++iyP2) {
 					ev +=
 						grids.lpref_dist[ip] * grids.Re_dist[ie]
-						* grids.yP_trans[iyP + p.nyP * iyP2] * grids.yT_dist[iyT]
-						* linterp1(grids.x, vviews[iyP2 + p.nyP * ip, p.nx, xp);
+						* grids.yP_trans[iyP + nyP * iyP2] * grids.yT_dist[iyT]
+						* linterp1(grids.x, vviews[iyP2 + nyP * ip, nx, xp);
 				}
 			}
 		}
@@ -137,12 +141,12 @@ void BellmanImpl::compute_value_t()
 	args.Rb = p.Rb;
 	args.beta = p.beta;
 
-	for (int ix=0; ix<p.nx; ++ix) {
+	for (int ix=0; ix<nx; ++ix) {
 		args.x = grids.x[ix];
-		for (int iyP=0; iyP<p.nyP; ++iyP) {
+		for (int iyP=0; iyP<nyP; ++iyP) {
 			auto idx = boost::indices[range()][range()][iyP];
 			arg->values = EV[idx];
-			for (int ip=0; ip<p.np; ++ip) {
+			for (int ip=0; ip<np; ++ip) {
 				solve_decisions(ix, iyP, ip, args);
 			}
 		}
@@ -167,9 +171,9 @@ void BellmanImpl::solve_decisions(int ix, int iyP,
 	// q_e
 	z0[2] = 0.3;
 
-	for (int isf=0; isf<p.n_sf; ++isf) {
+	for (int isf=0; isf<n_sf; ++isf) {
 		sf = grids.sf[isf];
-		for (int ise=0; ise<p.n_se; ++ise) {
+		for (int ise=0; ise<n_se; ++ise) {
 			se = grids.se[ise];
 		}
 	}

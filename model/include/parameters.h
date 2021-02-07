@@ -3,13 +3,6 @@
 
 class Parameters {
 	public:
-		int nx = 50;
-		int n_sf = 50;
-		int n_se = 50;
-		int n_re = 5;
-		int np = 1;
-		int nyP = 5;
-		int nyT = 1;
 		int T = 10;
 
 		// Coeff of relative risk aversion
@@ -20,7 +13,6 @@ class Parameters {
 		double phi2 = 0.5;
 
 		double beta = 0.95;
-		double xmax = 200.0;
 		double sgridcurv = 0.2;
 
 		double Rb = 1.005;
